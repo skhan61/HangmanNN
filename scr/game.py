@@ -106,8 +106,6 @@ def guess(model, word, char_frequency,
     return guessed_char
 
 # mimic api
-
-
 def update_word_state(actual_word, current_state, guessed_char):
     return ''.join([guessed_char if actual_word[i] == guessed_char else
                     current_state[i] for i in range(len(actual_word))])
@@ -181,79 +179,142 @@ def process_word(word):
 
     return initial_states
 
+# def simulate_game_progress(model, word, initial_state,
+#                            char_frequency, max_word_length, device, max_attempts=6,
+#                            normalize=True, difficulty="medium", outcome_preference=None)
 
-def simulate_game_progress(model, word, initial_state,
-                           char_frequency, max_word_length, device, max_attempts=6,
-                           normalize=True, difficulty="medium", outcome_preference=None):
 
-    guessed_letters = []
+def simulate_game_progress(model, word, initial_state, char_frequency, max_word_length, device,
+                           max_attempts=6, normalize=True, difficulty="medium", outcome_preference=None):
+
+    guessed_letters = set()
     attempts_remaining = max_attempts
-    masked_word = initial_state  # Starting with the initial masked state of the word
+    masked_word = initial_state
 
-    # Set difficulty level and print it
     difficulty_levels = {"easy": 0.8, "medium": 0.5, "hard": 0.2}
-    correct_guess_chance = difficulty_levels.get(difficulty, 0.5)
-
-    # print(
-    #     f"Starting game with difficulty: {difficulty}, \
-    #         Correct guess chance: {correct_guess_chance}")
+    correct_guess_chance = difficulty_levels[difficulty]
 
     game_progress = []
 
-    while attempts_remaining > 0:
-        # print(
-        #     f"Current state: {masked_word}, Attempts remaining: \
-        #         {attempts_remaining}, Guessed letters: {guessed_letters}")
-
-        possible_correct_guesses = [
-            char for char in word if char not in guessed_letters and char.isalpha()]
-        possible_incorrect_guesses = [
-            char for char in 'abcdefghijklmnopqrstuvwxyz'
-            if char not in word and char not in guessed_letters]
-
-        # # Print possible guesses
-        # print(f"Possible correct guesses: {possible_correct_guesses}")
-        # print(f"Possible incorrect guesses: {possible_incorrect_guesses}")
-
-        # Decision making based on outcome preference
+    while attempts_remaining > 0 and '_' in masked_word:
+        # Determine the pool for correct and incorrect guesses
+        # Exclude letters that are already revealed in the masked word
+        possible_correct_guesses = set(
+            [char for char in word if char not in guessed_letters and
+                masked_word[word.index(char)] == '_'])
+        possible_incorrect_guesses = set(
+            [char for char in 'abcdefghijklmnopqrstuvwxyz' if char not in
+                guessed_letters and char not in word])
+        
+        guessed_char = None
         if outcome_preference == "win" and possible_correct_guesses:
-            guessed_char = random.choice(possible_correct_guesses) if random.random(
-            ) < correct_guess_chance else random.choice(possible_incorrect_guesses)
+            if random.random() < correct_guess_chance and possible_correct_guesses:
+                guessed_char = random.choice(list(possible_correct_guesses))
+            elif possible_incorrect_guesses:
+                guessed_char = random.choice(list(possible_incorrect_guesses))
         elif outcome_preference == "lose" and possible_incorrect_guesses:
-            guessed_char = random.choice(possible_incorrect_guesses) if random.random(
-            ) > correct_guess_chance else random.choice(possible_correct_guesses)
+            if random.random() > correct_guess_chance and possible_incorrect_guesses:
+                guessed_char = random.choice(list(possible_incorrect_guesses))
+            elif possible_correct_guesses:
+                guessed_char = random.choice(list(possible_correct_guesses))
         else:
-            guessed_char = random.choice(possible_correct_guesses + possible_incorrect_guesses) if (
-                possible_correct_guesses + possible_incorrect_guesses) else None
+            combined_choices = list(
+                possible_correct_guesses.union(possible_incorrect_guesses))
+            if combined_choices:
+                guessed_char = random.choice(combined_choices)
 
         if not guessed_char:
-            # print("No valid character to guess, skipping turn.")
             continue
 
-        # Print the guessed character
-        # print(f"Guessed character: {guessed_char}")
-
-        guessed_letters.append(guessed_char)
-        new_masked_word = update_word_state(word, masked_word, guessed_char)
-        correct_guess = guessed_char in word
-
-        # Print the result of the guess
-        # print(
-        #     f"Result of guess: {'Correct' if correct_guess else 'Incorrect'}, \
-        #         New masked word: {new_masked_word}")
-
-        game_progress.append((guessed_char, new_masked_word, correct_guess))
-
-        if new_masked_word == word:
-            # print("Word guessed correctly.")
-            return True, game_progress
-        elif not correct_guess:
+        # Update game state based on guess correctness
+        if guessed_char in word:
+            masked_word = update_word_state(word, masked_word, guessed_char)
+            game_progress.append((guessed_char, masked_word, True))
+        else:
             attempts_remaining -= 1
+            game_progress.append((guessed_char, masked_word, False))
 
-        masked_word = new_masked_word
+        guessed_letters.add(guessed_char)
 
-    # print("Game ended. Word not guessed correctly.")
     return masked_word == word, game_progress
+
+# Make sure the update_word_state function is correctly updating the masked word
+def update_word_state(word, masked_word, guessed_char):
+    return "".join([char if char == guessed_char or masked_word[idx] != '_' else '_' for idx, char in enumerate(word)])
+
+
+# def simulate_game_progress(model, word, initial_state,
+#                            char_frequency, max_word_length, device, max_attempts=6,
+#                            normalize=True, difficulty="medium", outcome_preference=None):
+
+#     guessed_letters = []
+#     attempts_remaining = max_attempts
+#     masked_word = initial_state  # Starting with the initial masked state of the word
+
+#     # Set difficulty level and print it
+#     difficulty_levels = {"easy": 0.8, "medium": 0.5, "hard": 0.2}
+#     correct_guess_chance = difficulty_levels.get(difficulty, 0.5)
+
+#     # print(
+#     #     f"Starting game with difficulty: {difficulty}, \
+#     #         Correct guess chance: {correct_guess_chance}")
+
+#     game_progress = []
+
+#     while attempts_remaining > 0:
+#         # print(
+#         #     f"Current state: {masked_word}, Attempts remaining: \
+#         #         {attempts_remaining}, Guessed letters: {guessed_letters}")
+
+#         possible_correct_guesses = [
+#             char for char in word if char not in guessed_letters and char.isalpha()]
+#         possible_incorrect_guesses = [
+#             char for char in 'abcdefghijklmnopqrstuvwxyz'
+#             if char not in word and char not in guessed_letters]
+
+#         # # Print possible guesses
+#         # print(f"Possible correct guesses: {possible_correct_guesses}")
+#         # print(f"Possible incorrect guesses: {possible_incorrect_guesses}")
+
+#         # Decision making based on outcome preference
+#         if outcome_preference == "win" and possible_correct_guesses:
+#             guessed_char = random.choice(possible_correct_guesses) if random.random(
+#             ) < correct_guess_chance else random.choice(possible_incorrect_guesses)
+#         elif outcome_preference == "lose" and possible_incorrect_guesses:
+#             guessed_char = random.choice(possible_incorrect_guesses) if random.random(
+#             ) > correct_guess_chance else random.choice(possible_correct_guesses)
+#         else:
+#             guessed_char = random.choice(possible_correct_guesses + possible_incorrect_guesses) if (
+#                 possible_correct_guesses + possible_incorrect_guesses) else None
+
+#         if not guessed_char:
+#             # print("No valid character to guess, skipping turn.")
+#             continue
+
+#         # Print the guessed character
+#         # print(f"Guessed character: {guessed_char}")
+
+#         guessed_letters.append(guessed_char)
+#         new_masked_word = update_word_state(word, masked_word, guessed_char)
+#         correct_guess = guessed_char in word
+
+#         # Print the result of the guess
+#         # print(
+#         #     f"Result of guess: {'Correct' if correct_guess else 'Incorrect'}, \
+#         #         New masked word: {new_masked_word}")
+
+#         game_progress.append((guessed_char, new_masked_word, correct_guess))
+
+#         if new_masked_word == word:
+#             # print("Word guessed correctly.")
+#             return True, game_progress
+#         elif not correct_guess:
+#             attempts_remaining -= 1
+
+#         masked_word = new_masked_word
+
+#     # print("Game ended. Word not guessed correctly.")
+#     return masked_word == word, game_progress
 
 
 # import random
