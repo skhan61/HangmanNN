@@ -20,7 +20,7 @@ if [ -n "$(git diff)" ] || [ -n "$(git diff --cached)" ]; then
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
     if [ "$CURRENT_BRANCH" = "master" ]; then
-        git push git@github.com:skhan61/Optiver.git master
+        git push git@github.com:skhan61/HangmanNN.git master
     else
         echo "You are currently on the $CURRENT_BRANCH branch. Please switch to the main branch to auto-push."
     fi
