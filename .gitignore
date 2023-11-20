@@ -6,6 +6,7 @@
 ./cnn
 ./output_notebook/**
 ./hangman_api_user.ipynb
+
 # Whitelist specific file types and files globally
 !*.py
 !*.ipynb
@@ -14,11 +15,8 @@
 !*.yml
 !*.html
 
-# # Ignore everything in Old, then specifically whitelist only .py and .ipynb
-# ./Old/**
-# !./Old/*.py
-# !./Old/*.ipynb
-# !./report/*.html
+# Include everything in the scr directory
+!/scr/**
 
-# optiver-robust-best-single-model.ipynb
-# optiver-extensiveeda.ipynb
+# Include everything in the Old directory
+!/Old/**
