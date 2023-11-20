@@ -1,8 +1,11 @@
+# Ignore all files by default
+*
+
 # Ignore specific files and directories
 *_creds.txt
-./cnn
-./output_notebook/**
-./hangman_api_user.ipynb
+/cnn/
+/output_notebook/**
+/hangman_api_user.ipynb
 
 # Whitelist specific file types and files globally
 !*.py
@@ -13,8 +16,5 @@
 !*.html
 
 # Include specific directories
-!/old/**
-!/scr/**
-
-# Ignore all other files by default
-*
+!/old/
+!/scr/
