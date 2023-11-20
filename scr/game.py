@@ -228,20 +228,22 @@ def simulate_game_progress(model, word, initial_state, char_frequency, max_word_
     # print(f"We have to guess '{word}' from '{initial_state}'")
 
     while attempts_remaining > 0 and '_' in masked_word:
-        guessed_letters.update([char for idx, char in enumerate(word) if masked_word[idx] != '_'])
-        
+        guessed_letters.update(
+            [char for idx, char in enumerate(word) if masked_word[idx] != '_'])
+
         # print(
         #     f"Current state: {masked_word}, Attempts remaining: {attempts_remaining}")
 
         possible_correct_guesses = set()
-        possible_incorrect_guesses = set('abcdefghijklmnopqrstuvwxyz') - set(word)
+        possible_incorrect_guesses = set(
+            'abcdefghijklmnopqrstuvwxyz') - set(word)
 
         for idx, char in enumerate(word):
             if masked_word[idx] == '_' and char not in guessed_letters:
                 possible_correct_guesses.add(char)
             elif masked_word[idx] != '_':
-                guessed_letters.add(char)  # Add already revealed letters to guessed_letters
-
+                # Add already revealed letters to guessed_letters
+                guessed_letters.add(char)
 
         # print(f"Possible correct guesses: {possible_correct_guesses}")
         # print(f"Possible incorrect guesses: {possible_incorrect_guesses}")
@@ -250,12 +252,15 @@ def simulate_game_progress(model, word, initial_state, char_frequency, max_word_
         # Choosing a character to guess
         if outcome_preference == "win" and possible_correct_guesses:
             guessed_char = random.choice(list(possible_correct_guesses)) if \
-                random.random() < correct_guess_chance else (random.choice(list(possible_incorrect_guesses)) if possible_incorrect_guesses else None)
+                random.random() < correct_guess_chance else (random.choice(list(possible_incorrect_guesses)) if
+                                                             possible_incorrect_guesses else None)
         elif outcome_preference == "lose" and possible_incorrect_guesses:
             guessed_char = random.choice(list(possible_incorrect_guesses)) if \
-                random.random() > correct_guess_chance else (random.choice(list(possible_correct_guesses)) if possible_correct_guesses else None)
+                random.random() > correct_guess_chance else (random.choice(list(possible_correct_guesses))
+                                                             if possible_correct_guesses else None)
         else:
-            all_choices = list(possible_correct_guesses) + list(possible_incorrect_guesses)
+            all_choices = list(possible_correct_guesses) + \
+                list(possible_incorrect_guesses)
             guessed_char = random.choice(all_choices) if all_choices else None
 
         if not guessed_char:
@@ -279,8 +284,8 @@ def simulate_game_progress(model, word, initial_state, char_frequency, max_word_
 
 
 def update_word_state(word, masked_word, guessed_char):
-    return "".join([char if char == guessed_char or masked_word[idx] != '_' \
-        else masked_word[idx] for idx, char in enumerate(word)])
+    return "".join([char if char == guessed_char or masked_word[idx] != '_'
+                    else masked_word[idx] for idx, char in enumerate(word)])
 
 
 # def simulate_game_progress(model, word, initial_state,

@@ -5,7 +5,9 @@
 *_creds.txt
 /cnn/
 /output_notebook/**
-/hangman_api_user.ipynb
+# /hangman_api_user.ipynb
+
+
 
 # Whitelist specific file types and files globally
 !*.py
@@ -18,3 +20,4 @@
 # Include specific directories
 !/old/
 !/scr/
+!/dataset
