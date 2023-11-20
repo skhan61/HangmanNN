@@ -147,49 +147,32 @@ def play_game_with_a_word(model, word, char_frequency,
 
 #### Dont change above this ######
 
-
-# def generate_masked_word_variants(word, max_variants, max_masks):
-#     word_length = len(word)
-#     unique_chars = set(word)  # Extract unique characters
-#     masked_versions = set()
-
-#     while len(masked_versions) < max_variants:
-#         # Randomly choose characters to reveal
-#         chars_to_reveal = random.sample(
-#             unique_chars, random.randint(1, min(max_masks, len(unique_chars))))
-#         masked_word = ''.join(c if c in chars_to_reveal else '_' for c in word)
-#         masked_versions.add(masked_word)
-
-#     return list(masked_versions)
-
+import random
 
 def generate_masked_word_variants(word, max_variants, max_masks):
     word_length = len(word)
     unique_chars = list(set(word))  # Convert set to list
     masked_versions = set()
 
-    while len(masked_versions) < max_variants:
-        # Randomly choose characters to reveal
-        num_chars_to_reveal = random.randint(
-            1, min(max_masks, len(unique_chars)))
+    count = 0
+    while count < max_variants:
+        num_chars_to_reveal = random.randint(1, min(max_masks, len(unique_chars)))
         chars_to_reveal = random.sample(unique_chars, num_chars_to_reveal)
         masked_word = ''.join(c if c in chars_to_reveal else '_' for c in word)
-        masked_versions.add(masked_word)
 
-    return list(masked_versions)
-
+        if masked_word not in masked_versions:
+            yield masked_word  # Yield each unique masked word variant
+            masked_versions.add(masked_word)
+            count += 1
 
 def process_word(word, mask_prob=0.9, max_variants=10):
     word_length = len(word)
     max_variants = min(word_length, max_variants)
-    # Number of unique characters to potentially reveal
     max_masks = max(1, int(len(set(word)) * mask_prob))
 
-    other_masked_states = generate_masked_word_variants(
-        word, max_variants - 1, max_masks)
-    initial_states = ['_' * word_length] + other_masked_states
+    return ['_' * word_length] + list(generate_masked_word_variants(word, \
+        max_variants - 1, max_masks))
 
-    return initial_states
 
 
 def simulate_game_progress(model, word, initial_state, char_frequency,
