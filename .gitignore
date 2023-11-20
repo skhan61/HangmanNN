@@ -1,0 +1,24 @@
+# Ignore all files by default
+*
+
+# Ignore specific files and directories
+*_creds.txt
+./cnn
+./output_notebook/**
+./hangman_api_user.ipynb
+# Whitelist specific file types and files globally
+!*.py
+!*.ipynb
+!*.gitignore
+!*.sh
+!*.yml
+!*.html
+
+# # Ignore everything in Old, then specifically whitelist only .py and .ipynb
+# ./Old/**
+# !./Old/*.py
+# !./Old/*.ipynb
+# !./report/*.html
+
+# optiver-robust-best-single-model.ipynb
+# optiver-extensiveeda.ipynb
