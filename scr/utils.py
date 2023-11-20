@@ -1,20 +1,22 @@
+import pickle
 from datetime import datetime
 from pathlib import Path
-import numpy as np
 from typing import List
+
+import numpy as np
 import pandas as pd
 import torch
 
-
-import pickle
 
 def save_dataset_pickle(dataset, file_name='data/train_dataset.pkl'):
     with open(file_name, 'wb') as file:
         pickle.dump(dataset, file)
 
+
 def load_dataset_pickle(file_name='data/train_dataset.pkl'):
     with open(file_name, 'rb') as file:
         return pickle.load(file)
+
 
 def set_seed(seed_value):
     """Set seed for reproducibility.
@@ -33,6 +35,22 @@ def set_seed(seed_value):
 # set_seed(42)
 
 
+def print_scenarios(scenarios):
+    for scenario in scenarios:
+        word = scenario['word']
+        difficulty = scenario['difficulty']
+        outcome = scenario['outcome']
+        game_won = scenario['data'][0]
+        guesses = scenario['data'][1]
+
+        print(f"Word: {word}, Difficulty: {difficulty}, Outcome: {outcome}")
+        for guess in guesses:
+            letter, state, correct = guess
+            print(f"  Guessed '{letter}', State: {state}, Correct: {correct}")
+        print(f"  Game {'Won' if game_won else 'Lost'}")
+        print("")
+
+
 # Read a subset of words for debugging
 def read_words(filepath, limit=None):
     with open(filepath, 'r') as file:
@@ -42,6 +60,8 @@ def read_words(filepath, limit=None):
     return words
 
 # Function to save a list of words to a file
+
+
 def save_words_to_file(word_list, file_path):
     with open(file_path, 'w') as file:
         for word in word_list:
@@ -50,6 +70,7 @@ def save_words_to_file(word_list, file_path):
 
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
+
     def __init__(self, patience=7, delta=0.001):
         self.patience = patience
         self.counter = 0
