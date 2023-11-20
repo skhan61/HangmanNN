@@ -15,8 +15,5 @@
 !*.yml
 !*.html
 
-# Include everything in the scr directory
+!/old/**
 !/scr/**
-
-# Include everything in the Old directory
-!/Old/**
