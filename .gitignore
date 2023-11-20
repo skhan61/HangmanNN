@@ -1,6 +1,3 @@
-# Ignore all files by default
-*
-
 # Ignore specific files and directories
 *_creds.txt
 ./cnn
@@ -15,5 +12,9 @@
 !*.yml
 !*.html
 
+# Include specific directories
 !/old/**
 !/scr/**
+
+# Ignore all other files by default
+*
