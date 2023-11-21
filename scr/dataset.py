@@ -1,57 +1,29 @@
+import gc
 import random
-from multiprocessing import Pool
-import torch
-from torch.utils.data import Dataset
 from collections import defaultdict
+from multiprocessing import Pool
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader, Dataset
-import torch.nn.functional as F
 
-import torch
-from scr.feature_engineering import add_features_for_training, \
-    calculate_char_frequencies, process_single_word_inference, char_to_idx,idx_to_char 
-import random
-
-from torch.utils.data import Dataset
-
-import gc
+from scr.feature_engineering import (
+    add_features_for_training,
+    calculate_char_frequencies,
+    char_to_idx,
+    idx_to_char,
+    process_single_word_inference,
+)
 
 gc.collect()
 
 
-
-# def process_word(word):
-#     word_length = len(word)
-#     max_variants = min(word_length, 15)  # Increase to a higher number
-#     max_masks = word_length - 1  # Allow up to almost full masking
-
-#     return generate_masked_word_variants(word, max_variants, max_masks)
-
-# def generate_masked_word_variants(word, max_variants, max_masks):
-#     word_length = len(word)
-#     indices = list(range(word_length))
-#     masked_versions = set()
-
-#     while len(masked_versions) < max_variants:
-#         num_masks = random.randint(1, max_masks)  # Vary the number of masks
-#         mask_indices = set(random.sample(indices, num_masks))
-#         masked_word = ''.join(c if i not in mask_indices else '_' for i, c in enumerate(word))
-#         masked_versions.add(masked_word)
-
-#     return list(masked_versions)
-
-# def process_word(word):
-#     word_length = len(word)
-#     max_variants = min(word_length, 10)  # Increase to a higher number
-#     max_masks = word_length - 1  # Allow up to almost full masking
-
-#     return generate_masked_word_variants(word, max_variants, max_masks)
-
 class HangmanDataset(Dataset):
-    def __init__(self, word_list, char_freq_dict, max_word_length, \
-        mask_probability, ngram_size, num_parallel_workers=5, processing_timeout=10):
+    def __init__(self, word_list, char_freq_dict, max_word_length,
+                 mask_probability, ngram_size, num_parallel_workers=5,
+                 processing_timeout=10):
 
         self.char_freq_dict = char_freq_dict
         self.max_word_length = max_word_length
@@ -74,7 +46,8 @@ class HangmanDataset(Dataset):
 
             # Collect results as they complete
             for result in results:
-                self.data.extend([item for sublist in result.get() for item in sublist])
+                self.data.extend([item for sublist in result.get()
+                                 for item in sublist])
 
         return self.data
 
@@ -83,7 +56,7 @@ class HangmanDataset(Dataset):
         masked_variants = process_word(word)
         for masked_word in masked_variants:
             feature_set, label_tensor, missed_chars = add_features_for_training(
-                masked_word, self.char_freq_dict, self.max_word_length, 
+                masked_word, self.char_freq_dict, self.max_word_length,
                 self.mask_probability, self.ngram_size, normalize=True)
 
             # Share memory for tensors
@@ -91,7 +64,8 @@ class HangmanDataset(Dataset):
             label_tensor = label_tensor.clone().detach().share_memory_()
             missed_chars = missed_chars.clone().detach().share_memory_()
 
-            processed_data.append((feature_set, label_tensor, missed_chars, word))
+            processed_data.append(
+                (feature_set, label_tensor, missed_chars, word))
 
         return processed_data
 
@@ -102,27 +76,36 @@ class HangmanDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-from torch.utils.data import DataLoader
-
-
 
 class ProcessedHangmanDataset(Dataset):
-    def __init__(self, pkl_files_directory):
+    def __init__(self, pkls_dir, char_freq_dict, max_word_length,
+                 mask_probability, ngram_size):
         self.data = []
-        for file_path in pkl_files_directory.glob("*.pkl"):
-            with open(file_path, 'rb') as file:
-                game_states = pickle.load(file)
-                for state in game_states:
-                    feature_set, label_tensor, _ = add_features_for_training(
-                        state[0], char_freq_dict, max_word_length, 
-                        mask_probability, ngram_size, normalize=True)
-                    self.data.append((feature_set, label_tensor))
+        file_count = 0  # To count how many files are processed
+
+        for batch_dir in sorted(pkls_dir.iterdir(), key=lambda x: int(x.name) if x.name.isdigit() else float('inf')):
+            if batch_dir.is_dir():
+                for pkl_file in batch_dir.glob("*.pkl"):
+                    with open(pkl_file, 'rb') as file:
+                        game_states = pickle.load(file)
+
+                        if game_states:
+                            file_count += 1
+
+                        for state in game_states:
+                            game_won, guesses = state['data']
+                            for guess in guesses:
+                                guess, cu
+
+        print(f"Processed {file_count} files.")
+        print(f"Total data points: {len(self.data)}")
 
     def __getitem__(self, index):
         return self.data[index]
 
     def __len__(self):
         return len(self.data)
+
 
 # # Load the dataset
 # processed_dataset = ProcessedHangmanDataset(pkls_dir)
@@ -137,13 +120,12 @@ class ProcessedHangmanDataset(Dataset):
 #         # Pass features and labels to your model
 
 
-
 # class HangmanDataset(Dataset):
 #     def __init__(self, word_list, char_freq_dict, max_word_length, \
-#         mask_probability, ngram_size, 
+#         mask_probability, ngram_size,
 #                  word_freq_dict, num_stratified_samples=2000, \
 #                     num_parallel_workers=5, processing_timeout=10):
-        
+
 #         self.char_freq_dict = char_freq_dict
 #         self.max_word_length = max_word_length
 #         self.mask_probability = mask_probability
@@ -155,18 +137,17 @@ class ProcessedHangmanDataset(Dataset):
 #             word_freq_dict, num_stratified_samples)
 #         self.data = self.process_data_parallel(stratified_words)
 
-
     # def process_data_parallel(self, word_list):
     #     with Pool(self.num_parallel_workers) as pool:
     #         results = pool.map(self.process_single_word, word_list)
     #     self.data = [item for sublist in results for item in sublist]
-        
+
     #     return self.data
 
     # def process_data_parallel(self, word_list):
     #         chunk_size = 100  # Adjust this based on your memory constraints
     #         self.data = []
-            
+
     #         # Create a persistent pool
     #         with Pool(self.num_parallel_workers) as pool:
     #             # Process data in chunks asynchronously
@@ -184,7 +165,7 @@ class ProcessedHangmanDataset(Dataset):
     #     masked_variants = process_word(word)
     #     for masked_word in masked_variants:
     #         feature_set, label_tensor, missed_chars = add_features_for_training(
-    #             masked_word, self.char_freq_dict, self.max_word_length, 
+    #             masked_word, self.char_freq_dict, self.max_word_length,
     #             self.mask_probability, self.ngram_size, normalize=True)
 
     #         # Share memory for tensors
@@ -193,7 +174,7 @@ class ProcessedHangmanDataset(Dataset):
     #         missed_chars = missed_chars.clone().detach().share_memory_()
 
     #         processed_data.append((feature_set, label_tensor, missed_chars, word))
-    
+
     #     return processed_data
 
     # def process_single_word(self, word):
@@ -201,10 +182,10 @@ class ProcessedHangmanDataset(Dataset):
     #     masked_variants = process_word(word)
     #     for masked_word in masked_variants:
     #         feature_set, label_tensor, missed_chars = add_features_for_training(
-    #             masked_word, self.char_freq_dict, self.max_word_length, 
+    #             masked_word, self.char_freq_dict, self.max_word_length,
     #             self.mask_probability, self.ngram_size, normalize=True)
     #         processed_data.append((feature_set, label_tensor, missed_chars, word))
-    
+
     #     return processed_data
 
     # def stratified_sample_by_length_and_frequency(self, word_list, word_freq_dict, \
@@ -246,7 +227,6 @@ class ProcessedHangmanDataset(Dataset):
     #     return len(self.data)
 
 
-
 def collate_fn(batch):
     batch_features, batch_labels, \
         batch_missed_chars, original_words = zip(*batch)
@@ -261,8 +241,8 @@ def collate_fn(batch):
 
         # Check if feature tensor has the expected number of dimensions
         if feature.dim() == 2 and feature.size(1) > 0:
-            padded_feature = F.pad(feature, (0, 0, 0, \
-                max_length - feature.size(0)))
+            padded_feature = F.pad(feature, (0, 0, 0,
+                                             max_length - feature.size(0)))
             # print('okay')
         else:
             # Handle tensors that do not have the expected shape
@@ -280,11 +260,10 @@ def collate_fn(batch):
     padded_labels = torch.stack(padded_labels, dim=0)
     batch_missed_chars = torch.stack(batch_missed_chars, dim=0)
 
-    lengths_features = torch.tensor([feature.size(0) for feature in batch_features], dtype=torch.long)
+    lengths_features = torch.tensor(
+        [feature.size(0) for feature in batch_features], dtype=torch.long)
 
     return padded_features, padded_labels, batch_missed_chars, lengths_features, original_words
-
-
 
     # def generate_all_masked_versions(self, word):
     #     masked_versions = []
@@ -292,7 +271,7 @@ def collate_fn(batch):
     #         masked_word = ''.join(word[j] if i & (1 << j) else '_' for j in range(len(word)))
     #         masked_versions.append(masked_word)
     #     return masked_versions
-    
+
     # def generate_all_masked_versions(self, word, num_samples=5):
     #     masked_versions = []
     #     for _ in range(num_samples):  # Generate a limited number of samples

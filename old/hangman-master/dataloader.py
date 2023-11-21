@@ -12,7 +12,8 @@ extra_vocab = 1
 
 def filter_and_encode(word, vocab_size, min_len, char_to_id):
 	"""
-	checks if word length is greater than threshold and returns one-hot encoded array along with character sets
+	checks if word length is greater than threshold and 
+	returns one-hot encoded array along with character sets
 	:param word: word string
 	:param vocab_size: size of vocabulary (26 in this case)
 	:param min_len: word with length less than this is not added to the dataset

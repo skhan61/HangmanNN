@@ -26,20 +26,38 @@ def get_random_character():
     return random_char
 
 
-# # def gues(self, word):
-def guess_character(model, masked_word, char_frequency,
-                    max_word_length, device, guessed_chars, fallback_strategy=True):
+# # # def gues(self, word):
+# def guess_character(model, masked_word, char_frequency,
+#                     max_word_length, device, guessed_chars, fallback_strategy=True):
+#     """
+#     Guess the next character in the hangman game.
+
+#     :param model: Trained RNN model.
+#     :param masked_word: Current state of the word being guessed with '_' for missing characters.
+#     :param char_frequency: Frequency of each character in the training set.
+#     :param max_word_length: Maximum length of words in the training set.
+#     :param device: Device on which the model is running.
+#     :param guessed_chars: Set of characters already guessed.
+#     :param fallback_strategy: Whether to use fallback strategy or not.
+#     :return: Guessed character.
+#     """
+def guess_character(model, masked_word, char_frequency, \
+    max_word_length, device, guessed_chars, fallback_strategy=True):
+    
     """
     Guess the next character in the hangman game.
 
-    :param model: Trained RNN model.
-    :param masked_word: Current state of the word being guessed with '_' for missing characters.
-    :param char_frequency: Frequency of each character in the training set.
-    :param max_word_length: Maximum length of words in the training set.
-    :param device: Device on which the model is running.
-    :param guessed_chars: Set of characters already guessed.
-    :param fallback_strategy: Whether to use fallback strategy or not.
-    :return: Guessed character.
+    Args:
+        model: Trained RNN model. The neural network model used for character prediction.
+        masked_word (str): Current state of the word being guessed, represented with '_' for missing characters.
+        char_frequency (dict): Frequency of each character in the training set, used to determine the likelihood of each character.
+        max_word_length (int): Maximum length of words in the training set. This is used to normalize word lengths in the model.
+        device: The device (CPU/GPU) on which the model is running, ensuring compatibility and performance optimization.
+        guessed_chars (set): Set of characters that have already been guessed in the current game.
+        fallback_strategy (bool): Flag to determine whether to use a fallback strategy or not. The fallback strategy is used when the model's prediction is uncertain.
+
+    Returns:
+        str: The character guessed by the model or the fallback strategy.
     """
 
     # Preprocess the masked word
@@ -107,8 +125,6 @@ def guess(model, word, char_frequency,
     return guessed_char
 
 # mimic api
-
-
 def update_word_state(actual_word, current_state, guessed_char):
     return ''.join([guessed_char if actual_word[i] == guessed_char else
                     current_state[i] for i in range(len(actual_word))])
@@ -133,7 +149,8 @@ def play_game_with_a_word(model, word, char_frequency,
         if guessed_char not in word:
             attempts_remaining -= 1
 
-        # print(f"Guessed: {guessed_char}, Word: {' '.join(masked_word)}, Attempts remaining: {attempts_remaining}")  # Display current state
+        # print(f"Guessed: {guessed_char}, Word: {' '.join(masked_word)}, \
+        # Attempts remaining: {attempts_remaining}")  # Display current state
 
         if "_" not in masked_word:
             game_status = "success"
@@ -189,7 +206,8 @@ def optimized_masked_variants(word, max_variants, max_masks):
     random.shuffle(all_combinations)
     masked_versions = set()
     for chars_to_reveal in all_combinations[:max_variants]:
-        masked_word = ''.join(c if c in chars_to_reveal else '_' for c in word)
+        masked_word = ''.join(c if c in chars_to_reveal \
+            else '_' for c in word)
         if masked_word not in masked_versions:
             masked_versions.add(masked_word)
             yield masked_word
@@ -200,7 +218,8 @@ def optimized_masked_variants(word, max_variants, max_masks):
 def process_word(word, mask_prob=0.9, max_variants=10):
     word_length = len(word)
     max_masks = max(1, int(len(set(word)) * mask_prob))
-    return ['_' * word_length] + list(optimized_masked_variants(word, max_variants - 1, max_masks))
+    return ['_' * word_length] + list(optimized_masked_variants(word, \
+        max_variants - 1, max_masks))
 
 
 def simulate_game_progress(model, word, initial_state, char_frequency,
