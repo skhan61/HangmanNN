@@ -1,3 +1,4 @@
+from itertools import combinations
 import random
 import re
 import string
@@ -147,32 +148,59 @@ def play_game_with_a_word(model, word, char_frequency,
 
 #### Dont change above this ######
 
-import random
+# import random
 
-def generate_masked_word_variants(word, max_variants, max_masks):
-    word_length = len(word)
-    unique_chars = list(set(word))  # Convert set to list
+# def generate_masked_word_variants(word, max_variants, max_masks):
+#     word_length = len(word)
+#     unique_chars = list(set(word))  # Convert set to list
+#     masked_versions = set()
+
+#     count = 0
+#     while count < max_variants:
+#         num_chars_to_reveal = random.randint(1, min(max_masks, \
+#             len(unique_chars)))
+#         chars_to_reveal = random.sample(unique_chars, num_chars_to_reveal)
+#         masked_word = ''.join(c if c in chars_to_reveal else '_' \
+#             for c in word)
+
+#         if masked_word not in masked_versions:
+#             yield masked_word  # Yield each unique masked word variant
+#             masked_versions.add(masked_word)
+#             count += 1
+
+# def process_word(word, mask_prob=0.9, max_variants=10):
+#     word_length = len(word)
+#     max_variants = min(word_length, max_variants)
+#     max_masks = max(1, int(len(set(word)) * mask_prob))
+
+#     return ['_' * word_length] + list(generate_masked_word_variants(word, \
+#         max_variants - 1, max_masks))
+
+
+def optimized_masked_variants(word, max_variants, max_masks):
+    unique_chars = list(set(word))
+    all_combinations = []
+
+    # Generate all possible combinations of characters to reveal
+    for r in range(1, min(max_masks, len(unique_chars)) + 1):
+        all_combinations.extend(combinations(unique_chars, r))
+
+    # Randomly select combinations and generate masked words
+    random.shuffle(all_combinations)
     masked_versions = set()
-
-    count = 0
-    while count < max_variants:
-        num_chars_to_reveal = random.randint(1, min(max_masks, len(unique_chars)))
-        chars_to_reveal = random.sample(unique_chars, num_chars_to_reveal)
+    for chars_to_reveal in all_combinations[:max_variants]:
         masked_word = ''.join(c if c in chars_to_reveal else '_' for c in word)
-
         if masked_word not in masked_versions:
-            yield masked_word  # Yield each unique masked word variant
             masked_versions.add(masked_word)
-            count += 1
+            yield masked_word
+        if len(masked_versions) >= max_variants:
+            break
+
 
 def process_word(word, mask_prob=0.9, max_variants=10):
     word_length = len(word)
-    max_variants = min(word_length, max_variants)
     max_masks = max(1, int(len(set(word)) * mask_prob))
-
-    return ['_' * word_length] + list(generate_masked_word_variants(word, \
-        max_variants - 1, max_masks))
-
+    return ['_' * word_length] + list(optimized_masked_variants(word, max_variants - 1, max_masks))
 
 
 def simulate_game_progress(model, word, initial_state, char_frequency,
@@ -195,8 +223,8 @@ def simulate_game_progress(model, word, initial_state, char_frequency,
             word) if masked_word[idx] != '_')
 
         possible_correct_guesses = set(char for idx, char in enumerate(word)
-                                       if masked_word[idx] == '_' and char not \
-                                        in guessed_letters)
+                                       if masked_word[idx] == '_' and char not
+                                       in guessed_letters)
         possible_incorrect_guesses = set(
             'abcdefghijklmnopqrstuvwxyz') - set(word) - guessed_letters
 
