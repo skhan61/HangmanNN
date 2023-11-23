@@ -65,6 +65,45 @@ def update_sampler(sampler, new_performance_metrics):
     # print(f"Updated indices count: {len(sampler.indices)}")
 
 
+class PerformanceBasedSampler(Sampler):
+    def __init__(self, data_source, performance_metrics):
+        self.data_source = data_source
+        self.performance_metrics = performance_metrics
+        self.indices = self.generate_indices()
+
+    def generate_indices(self):
+        epsilon = 1e-6
+        indices = []
+
+        for idx, data in enumerate(self.data_source):
+            word_length = len(data['word'])
+            difficulty = data['difficulty']
+            outcome = data['outcome']
+            performance = self.performance_metrics.get(
+                word_length, {}).get(difficulty, {}).get(outcome, {})
+            win_rate = performance.get('win_rate', 1)
+
+            extra_weight = max(
+                1, min(int(TARGET_WIN_RATE / (win_rate + epsilon)), MAX_EXTRA_WEIGHT))
+            indices.extend([idx] * extra_weight)
+
+        if len(indices) > MAX_INDICES:
+            random.shuffle(indices)
+            indices = indices[:MAX_INDICES]
+
+        return indices
+
+    # ... [rest of the class remains the same] ...
+
+# Update the sampler with new performance metrics when needed
+
+
+def update_sampler(sampler, new_performance_metrics):
+    sampler.performance_metrics = new_performance_metrics
+    sampler.indices = sampler.generate_indices()
+
+
+# dont change below
 def stratified_sample_by_length_and_frequency(word_list, word_freq_dict,
                                               num_stratified_samples):
 
@@ -114,50 +153,3 @@ def group_words_by_length(word_list):
 
 
 gc.collect()
-
-
-# import random
-
-# def sample_scenarios(scenarios, base_sample_size, \
-#     max_samples_per_length=15, always_include_masked_state=None):
-#     sampled = []
-#     word_length_categories = set([len(s['word']) for s in scenarios])
-
-#     for length in word_length_categories:
-#         length_scenarios = [s for s in scenarios if len(s['word']) == length]
-#         total_samples_for_length = 0
-
-#         # Always include the fully masked state scenario if provided
-#         if always_include_masked_state:
-#             masked_state_scenarios = [s for s in length_scenarios \
-#                 if s['initial_state'] == always_include_masked_state]
-
-#             for scenario in masked_state_scenarios:
-#                 sampled.append(scenario)
-#                 total_samples_for_length += 1
-
-#         # Continue with other categories
-#         for category in ["easy_win", "easy_lose", "medium_win", "medium_lose", \
-#             "hard_win", "hard_lose"]:
-#             cat_scenarios = [s for s in length_scenarios if s['difficulty'] \
-#                 == category.split('_')[0] and s['outcome'] == category.split('_')[1]]
-
-#             available_samples = max_samples_per_length - total_samples_for_length
-#             if available_samples <= 0:
-#                 break
-
-#             sample_size = min(len(cat_scenarios), base_sample_size, available_samples)
-#             sampled.extend(random.sample(cat_scenarios, sample_size))
-#             total_samples_for_length += sample_size
-
-#     # # Debug: Check for inclusion of fully masked state scenarios in the final sample
-#     # for scenario in sampled:
-#     #     initial_state = scenario.get('initial_state')
-#     #     if initial_state == always_include_masked_state:
-#     #         print(f"Debug: Fully masked state scenario included for word '{scenario['word']}'")
-#     #     elif initial_state is not None:
-#     #         print(f"Debug: Other initial state scenario for word '{scenario['word']}'")
-#     #     else:
-#     #         print(f"Debug: No initial state provided for word '{scenario['word']}'")
-
-#     return sampled

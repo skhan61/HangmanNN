@@ -25,8 +25,7 @@ def get_random_character():
 
 # # # def gues(self, word):
 def guess_character(model, masked_word, char_frequency,
-                    max_word_length, device, guessed_chars,
-                    max_seq_length=6, fallback_strategy=True):
+                    max_word_length, device, guessed_chars, fallback_strategy=True):
     """
     Guess the next character in the hangman game.
 
@@ -43,32 +42,47 @@ def guess_character(model, masked_word, char_frequency,
         str: The character guessed by the model or the fallback strategy.
     """
 
-    batch_features, batch_missed_characters \
-        = process_batch_of_games([masked_word],
-                                 char_frequency, max_word_length, max_seq_length)
+    # Preprocess the masked word
+    # feature_set, missed_chars = process_single_word_inference(
+    #     masked_word, char_frequency, max_word_length)  # , normalize=True)
+    # print(feature_set.shape)
+    # feature_set, missed_chars = feature_set.unsqueeze(
+    #     0).to(device), missed_chars.unsqueeze(0).to(device)
 
-    batch_size = 1
+    # sequence_lengths = torch.tensor(
+    #     [feature_set.size(1)], dtype=torch.long)  # .to(device)
 
-    sequence_lengths = torch.tensor([max_seq_length]
-                                    * batch_size, dtype=torch.long).cpu()
+    # # print(feature_set.shape)
+
+    # # Get model output
+    # with torch.no_grad():
+    #     output = model(feature_set, sequence_lengths, missed_chars)
+    # # Get probabilities of the last character position
+    batch_features, batch_missed_characters = process_batch_of_games(
+        batch_of_games, char_frequency, max_word_length, max_seq_length)
+
+    # Extract features and missed characters for the first game in the batch
+    feature_set = batch_features[0]  # First game's features
+    missed_chars = batch_missed_characters[0]  # First game's missed characters
+
+    # Adjust shapes for model input
+    feature_set, missed_chars = feature_set.unsqueeze(
+        0).to(device), missed_chars.unsqueeze(0).to(device)
+    sequence_lengths = torch.tensor(
+        [feature_set.size(1)], dtype=torch.long)  # .to(device)
+
+    # Get model output
     with torch.no_grad():
-        output = model(batch_features, sequence_lengths,
-                       batch_missed_characters).to(device)
+        output = model(feature_set, sequence_lengths, missed_chars)
 
-    # Assuming the last character in the sequence is the current guess
     last_char_position = sequence_lengths.item() - 1
     probabilities = torch.softmax(output[0, last_char_position, :], dim=-1)
 
-    # Exclude already guessed characters
-    guessed_indices = [char_to_idx[char]
-                       for char in guessed_chars if char in char_to_idx]
-    probabilities[torch.tensor(
-        guessed_indices, dtype=torch.long, device=device)] = 0
-
-    # Find the best character to guess
+    # Exclude already guessed characters and get the most probable character
+    probabilities[torch.tensor([char_to_idx[char] for char in guessed_chars],
+                               dtype=torch.long)] = 0
     best_char_index = torch.argmax(probabilities).item()
     guessed_char = idx_to_char[best_char_index]
-
     # guessed_char = get_random_character() #TODO
 
     # Fallback strategy: choose the most common unguessed character
@@ -83,9 +97,12 @@ def guess_character(model, masked_word, char_frequency,
 
     return guessed_char
 
+
+# # Example usage
+# guessed_char = get_random_character()
+# print(guessed_char)
+
 # # def gues(self, word):
-
-
 def guess(model, word, char_frequency,
           max_word_length, device, guessed_letters):
 
@@ -118,8 +135,7 @@ def update_word_state(actual_word, current_state, guessed_char):
 
 
 def play_game_with_a_word(model, word, char_frequency,
-                          max_word_length, device, max_attempts=6,
-                          normalize=True):
+                          max_word_length, device, max_attempts=6, normalize=True):
     guessed_letters = []  # A list to keep track of guessed characters
     attempts_remaining = max_attempts
     masked_word = "_" * len(word)

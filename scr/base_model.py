@@ -28,25 +28,6 @@ class BaseModel(nn.Module):
             save_dict['optimizer_state_dict'] = self.optimizer.state_dict()
         torch.save(save_dict, file_path)
 
-    # @staticmethod
-    # def load_model(model_class, filename, device, config_path=None):
-    #     if config_path:
-    #         with open(config_path, 'r') as file:
-    #             config = yaml.safe_load(file)
-    #     else:
-    #         checkpoint = torch.load(filename, map_location=device)
-    #         config = checkpoint['config']
-
-    #     model = model_class(config)
-    #     model.load_state_dict(checkpoint['model_state_dict'])
-
-    #     if 'optimizer_state_dict' in checkpoint and hasattr(model, 'optimizer'):
-    #         model.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-    #     model.to(device)
-
-    #     return model
-
     @staticmethod
     def load_model(model_class, filename, device, config_path=None):
         checkpoint = torch.load(filename, map_location=device)
