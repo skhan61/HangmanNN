@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import yaml
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class BaseModel(nn.Module):
     def __init__(self, config):
@@ -29,7 +31,11 @@ class BaseModel(nn.Module):
         torch.save(save_dict, file_path)
 
     @staticmethod
-    def load_model(model_class, filename, device, config_path=None):
+    def load_model(model_class, filename, device=None, config_path=None):
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # print("Device before loading model:", device)
+
         checkpoint = torch.load(filename, map_location=device)
 
         if config_path:
@@ -39,9 +45,17 @@ class BaseModel(nn.Module):
             config = checkpoint['config']
 
         model = model_class(config)
+        model.to(device)  # Set device after applying configuration
+        # print("Device after loading config, before loading state dict:", next(model.parameters()).device)
+
         model.load_state_dict(checkpoint['model_state_dict'])
+        # print("Device after loading state dict:", next(model.parameters()).device)
 
         if 'optimizer_state_dict' in checkpoint and hasattr(model, 'optimizer'):
             model.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        model.to(device)
+            for state in model.optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)  # Move optimizer state to device
+
         return model

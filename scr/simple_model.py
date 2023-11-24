@@ -18,11 +18,11 @@ class SimpleLSTM(BaseModel):
         self.max_word_length = config.get('max_word_length', 5)
         self.input_feature_size = config.get('input_feature_size', 5)
         self.use_embedding = config.get('use_embedding', True)
-        self.lr = config.get('lr', 0.001)  # Default learning rate
+        self.lr = config.get('lr', 0.0001)  # Default learning rate
 
-        # Device handling
-        self.device = torch.device("cuda" if torch.cuda.is_available(
-        ) and config.get('use_cuda', False) else "cpu")
+        # # Device handling
+        # self.device = torch.device("cuda" if torch.cuda.is_available(
+        # ) and config.get('use_cuda', False) else "cpu")
 
         if self.use_embedding:
             self.embedding = nn.Embedding(
@@ -50,8 +50,13 @@ class SimpleLSTM(BaseModel):
 
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
-        # Move all layers to the correct device
-        self.to(self.device)
+        # # Move all layers to the correct device
+        # self.to(self.device)
+
+        # Set the device attribute based on CUDA availability
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)  # Move the model to the specified device
 
     def forward(self, x, x_lens, miss_chars):
         # Move input data to the correct device
@@ -79,12 +84,10 @@ class SimpleLSTM(BaseModel):
 
         # Embedding and concatenation
         if self.use_embedding:
-            embedded_chars = self.embedding(char_indices_flattened)
-            # Concatenation
+            embedded_chars = self.embedding(
+                char_indices_flattened.to(self.device))
             rnn_input = torch.cat(
                 (embedded_chars, other_features_reshaped), dim=-1)
-
-            # print(f'rnn input shape: ', rnn_input.shape)
         else:
             rnn_input = other_features_reshaped
 
@@ -105,10 +108,10 @@ class SimpleLSTM(BaseModel):
         output, _ = torch.nn.utils.rnn.pad_packed_sequence(
             output_packed, batch_first=True)
 
-        # Process missed characters - ensure it remains 3D even for batch size of 1
+        # Process missed characters
+        # miss_chars_processed = self.miss_linear(miss_chars.squeeze())
+
         miss_chars_processed = self.miss_linear(miss_chars)
-        if miss_chars_processed.dim() == 2:
-            miss_chars_processed = miss_chars_processed.unsqueeze(0)
 
         # Combine hidden states for bidirectional RNN
         if self.rnn.bidirectional:
@@ -119,27 +122,30 @@ class SimpleLSTM(BaseModel):
         else:
             hidden_combined = hidden[-1]
 
-        # # Process missed characters
-        # miss_chars_processed = self.miss_linear(miss_chars.squeeze())
-
-        # Debug prints
+        # # Debug prints
         # print("Shape of hidden_combined before unsqueeze:", hidden_combined.shape)
         # print("Shape of miss_chars_processed before unsqueeze:",
-            #   miss_chars_processed.shape)
+        #       miss_chars_processed.shape)
 
-        # Correctly reshape hidden_combined to match the batch and sequence length of miss_chars_processed
+        # Reshape hidden_combined to match the batch and sequence length of miss_chars_processed
+        # hidden_combined: [1, 512] -> [1, 1, 512] -> [1, 6, 512]
         hidden_combined = hidden_combined.unsqueeze(
-            1).expand(-1, miss_chars_processed.size(1), -1)
+            1).expand(-1, max_seq_length, -1)
 
-        # Debug prints
-        # print("Shape of hidden_combined after unsqueeze and expand:",
-            #   hidden_combined.shape)
-        # print("Shape of reshaped miss_chars_processed:",
-            #   miss_chars_processed.shape)
+        # Ensure miss_chars_processed has the same number of dimensions as hidden_combined
+        # miss_chars_processed: [6, 50] -> [1, 6, 50]
+        # miss_chars_processed = miss_chars_processed.unsqueeze(0)
+
+        # print("hidden_combined shape:", hidden_combined.shape)
+        # print("miss_chars_processed shape:", miss_chars_processed.shape)
 
         # Concatenate along the last dimension
         concatenated = torch.cat(
             (hidden_combined, miss_chars_processed), dim=2)
+
+        # # Concatenate along the last dimension
+        # concatenated = torch.cat(
+        #     (hidden_combined, miss_chars_processed), dim=2)
 
         out = self.linear_out(F.relu(concatenated))
 

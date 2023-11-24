@@ -32,12 +32,15 @@ def guess_character(model, masked_word, char_frequency,
 
     Args:
         model: Trained RNN model. The neural network model used for character prediction.
-        masked_word (str): Current state of the word being guessed, represented with '_' for missing characters.
-        char_frequency (dict): Frequency of each character in the training set, used to determine the likelihood of each character.
-        max_word_length (int): Maximum length of words in the training set. This is used to normalize word lengths in the model.
-        device: The device (CPU/GPU) on which the model is running, ensuring compatibility and performance optimization.
+        masked_word (str): Current state of the word being guessed, represented with '_' 
+        for missing characters. char_frequency (dict): Frequency of each character in the 
+        training set, used to determine the likelihood of each character.
+        max_word_length (int): Maximum length of words in the training set. This is used to 
+        normalize word lengths in the model. device: The device (CPU/GPU) on which the model is 
+        running, ensuring compatibility and performance optimization.
         guessed_chars (set): Set of characters that have already been guessed in the current game.
-        fallback_strategy (bool): Flag to determine whether to use a fallback strategy or not. The fallback strategy is used when the model's prediction is uncertain.
+        fallback_strategy (bool): Flag to determine whether to use a fallback strategy or not. 
+        The fallback strategy is used when the model's prediction is uncertain.
 
     Returns:
         str: The character guessed by the model or the fallback strategy.
@@ -51,9 +54,14 @@ def guess_character(model, masked_word, char_frequency,
 
     sequence_lengths = torch.tensor([max_seq_length]
                                     * batch_size, dtype=torch.long).cpu()
+
+    # batch_features = batch_features.to(device)
+    # # sequence_lengths = sequence_lengths.to(device)
+    # batch_missed_characters = batch_missed_characters.to(device)
+
     with torch.no_grad():
         output = model(batch_features, sequence_lengths,
-                       batch_missed_characters).to(device)
+                       batch_missed_characters)  # .to(device)
 
     # Assuming the last character in the sequence is the current guess
     last_char_position = sequence_lengths.item() - 1
@@ -62,6 +70,7 @@ def guess_character(model, masked_word, char_frequency,
     # Exclude already guessed characters
     guessed_indices = [char_to_idx[char]
                        for char in guessed_chars if char in char_to_idx]
+    # print(device)
     probabilities[torch.tensor(
         guessed_indices, dtype=torch.long, device=device)] = 0
 

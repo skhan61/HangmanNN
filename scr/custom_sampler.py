@@ -11,92 +11,75 @@ MAX_INDICES = 10000     # Example value, adjust as needed
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, performance_metrics):
-        # print("Initializing PerformanceBasedSampler")
+    def __init__(self, data_source, performance_metrics, \
+        target_win_rate=0.5, max_weight=100, max_word_length=10):
         self.data_source = data_source
         self.performance_metrics = performance_metrics
-        self.indices = self.generate_indices()
-        # print(f"Initial indices generated: {len(self.indices)}")
-
-    def generate_indices(self):
-        epsilon = 1e-6  # A small value to avoid division by zero
-        indices = []
-        extra_weights_distribution = {}  # For debugging
-
-        for idx, data in enumerate(self.data_source):
-            word_length = len(data[3])
-            performance = self.performance_metrics.get(word_length, {})
-            win_rate = performance.get('win_rate', 1)
-
-            # Calculate extra weight based on win rate
-            extra_weight = max(1, min(int(TARGET_WIN_RATE
-                                          / (win_rate + epsilon)), MAX_EXTRA_WEIGHT))
-            indices.extend([idx] * extra_weight)
-
-            # Collect data for debugging
-            extra_weights_distribution.setdefault(extra_weight, 0)
-            extra_weights_distribution[extra_weight] += 1
-
-            # Debug line for every 100 entries
-            # if idx % 100 == 0:
-            # print(f"Processed {idx} entries, current index count: {len(indices)}")
-
-        # Limit the total number of indices
-        if len(indices) > MAX_INDICES:
-            indices = indices[:MAX_INDICES]
-
-        # print(f"Total indices generated: {len(indices)}")
-        # print(f"Extra weights distribution: {extra_weights_distribution}")
-        return indices
-
-    def __iter__(self):
-        # print("Creating iterator for indices")
-        return iter(self.indices)
-
-    def __len__(self):
-        # print(f"Length of sampler: {len(self.indices)}")
-        return len(self.indices)
-
-
-def update_sampler(sampler, new_performance_metrics):
-    # print("Updating sampler with new performance metrics")
-    sampler.performance_metrics = new_performance_metrics
-    sampler.indices = sampler.generate_indices()
-    # print(f"Updated indices count: {len(sampler.indices)}")
-
-
-class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, performance_metrics):
-        self.data_source = data_source
-        self.performance_metrics = performance_metrics
+        self.target_win_rate = target_win_rate
+        self.max_weight = max_weight
+        self.max_word_length = max_word_length  # Add this line
         self.indices = self.generate_indices()
 
     def generate_indices(self):
-        epsilon = 1e-6
         indices = []
+        for idx, (_, _, additional_info) in enumerate(self.data_source):
+            word_length = len(additional_info['word'])
+            difficulty = additional_info['difficulty']
+            outcome = additional_info['outcome']
 
-        for idx, data in enumerate(self.data_source):
-            word_length = len(data['word'])
-            difficulty = data['difficulty']
-            outcome = data['outcome']
+            # Access performance metrics
             performance = self.performance_metrics.get(
                 word_length, {}).get(difficulty, {}).get(outcome, {})
             win_rate = performance.get('win_rate', 1)
+            max_attempts = performance.get('max_attempts', 10)
 
-            extra_weight = max(
-                1, min(int(TARGET_WIN_RATE / (win_rate + epsilon)), MAX_EXTRA_WEIGHT))
-            indices.extend([idx] * extra_weight)
+            # # Debug prints
+            # print(
+            #     f"Word Length: {word_length}, Difficulty: {difficulty}, Outcome: {outcome}")
+            # print(f"Performance Metrics: {performance}")
+            # print(f"Win Rate: {win_rate}, Max Attempts: {max_attempts}")
 
-        if len(indices) > MAX_INDICES:
-            random.shuffle(indices)
-            indices = indices[:MAX_INDICES]
+            # Calculate weight
+            # Adjust the weight calculation
+            weight = self.calculate_weight(
+                word_length, difficulty, outcome, win_rate, max_attempts)
 
-        return indices
+            indices.extend([idx] * weight)
 
-    # ... [rest of the class remains the same] ...
+        random.shuffle(indices)
+        return indices[:MAX_INDICES]
 
-# Update the sampler with new performance metrics when needed
+    def __iter__(self):
+        # Returns an iterator over the generated indices
+        return iter(self.indices)
 
+    def __len__(self):
+        # Returns the length of the generated indices
+        return len(self.indices)
+
+    def calculate_weight(self, word_length, difficulty, outcome, win_rate, max_attempts):
+        # Factor in word length
+        # Assuming max_word_length is defined
+        length_weight = word_length / self.max_word_length
+
+        # Differentiate between win and lose outcomes
+        if outcome == 'win':
+            # Higher weight for less frequent wins
+            outcome_weight = (1 - win_rate) * 2
+        else:  # 'lose'
+            outcome_weight = win_rate * 2  # Higher weight for more frequent losses
+
+        # Combine factors for total weight
+        total_weight = length_weight * outcome_weight * (max_attempts / 10)
+        return min(int(total_weight), self.max_weight)
+
+
+# Example usage
+# performance_metrics = { ... }
+# sampler = PerformanceBasedSampler(dataset, performance_metrics, target_win_rate=0.6, max_weight=120)
+
+
+# dont change below
 
 def update_sampler(sampler, new_performance_metrics):
     sampler.performance_metrics = new_performance_metrics
