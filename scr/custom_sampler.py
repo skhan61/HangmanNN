@@ -11,8 +11,8 @@ MAX_INDICES = 10000     # Example value, adjust as needed
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, performance_metrics, \
-        target_win_rate=0.5, max_weight=100, max_word_length=10):
+    def __init__(self, data_source, performance_metrics,
+                 target_win_rate=0.5, max_weight=100, max_word_length=10):
         self.data_source = data_source
         self.performance_metrics = performance_metrics
         self.target_win_rate = target_win_rate
@@ -121,6 +121,25 @@ def stratified_sample_by_length_and_frequency(word_list, word_freq_dict,
             sampled_high_freq_words + sampled_low_freq_words)
 
     return stratified_sampled_words
+
+
+def stratified_sample_by_length(word_list, num_stratified_samples):
+    word_groups = group_words_by_length(word_list)
+    total_words = len(word_list)
+    stratified_sampled_words = []
+
+    for word_length, words in word_groups.items():
+        proportion = len(words) / total_words
+        num_samples_per_group = max(
+            1, round(proportion * num_stratified_samples))
+
+        # Randomly sample words within each length group
+        sampled_words = random.sample(
+            words, min(len(words), num_samples_per_group))
+        stratified_sampled_words.extend(sampled_words)
+
+    return stratified_sampled_words
+
 
 # Helper function to group words by their length
 
