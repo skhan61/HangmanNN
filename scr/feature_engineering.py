@@ -182,7 +182,40 @@ def build_feature_set(word, char_frequency, max_word_length, ngram_n=3, normaliz
 
     return features_padded  # Only return the feature tensor
 
+
 # Correct the extract_ngrams function
+
+
+def pad_and_reshape_labels(labels, model_output_shape):
+    batch_size, sequence_length, num_classes = model_output_shape
+
+    # Calculate the total number of elements needed
+    total_elements = batch_size * sequence_length
+
+    # Pad the labels to the correct total length
+    padded_labels = F.pad(input=labels, pad=(
+        0, total_elements - labels.numel()), value=0)
+
+    # Reshape the labels to match the batch and sequence length
+    reshaped_labels = padded_labels.view(batch_size, sequence_length)
+
+    # Convert to one-hot encoding
+    one_hot_labels = F.one_hot(
+        reshaped_labels, num_classes=num_classes).float()
+
+    return one_hot_labels
+
+
+def process_single_game_state(game_state, char_frequency, max_word_length):
+    # print("Game state received:", game_state)  # Debugging statement
+    current_state, guessed_characters = game_state
+
+    # Process this single game state
+    sequence_features, sequence_missed_chars = process_game_sequence(
+        [current_state], char_frequency, max_word_length, 1)  # max_seq_length is 1 for single game state
+
+    # Since it's a single game state, we extract the first element from the batch
+    return sequence_features[0], sequence_missed_chars[0]
 
 
 gc.collect()

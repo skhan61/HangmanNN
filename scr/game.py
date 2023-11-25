@@ -26,7 +26,7 @@ def get_random_character():
 # # # def gues(self, word):
 def guess_character(model, masked_word, char_frequency,
                     max_word_length, device, guessed_chars,
-                    max_seq_length=6, fallback_strategy=True):
+                    max_seq_length=1, fallback_strategy=True):
     """
     Guess the next character in the hangman game.
 

@@ -11,8 +11,9 @@ MAX_INDICES = 10000     # Example value, adjust as needed
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, performance_metrics,
-                 target_win_rate=0.5, max_weight=100, max_word_length=10):
+    def __init__(self, data_source, performance_metrics, max_word_length=10,
+                 target_win_rate=TARGET_WIN_RATE, max_weight=MAX_EXTRA_WEIGHT):
+
         self.data_source = data_source
         self.performance_metrics = performance_metrics
         self.target_win_rate = target_win_rate
