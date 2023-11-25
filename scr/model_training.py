@@ -12,24 +12,24 @@ from scr.game import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def pad_and_reshape_labels(labels, model_output_shape):
-    batch_size, sequence_length, num_classes = model_output_shape
+# def pad_and_reshape_labels(labels, model_output_shape):
+#     batch_size, sequence_length, num_classes = model_output_shape
 
-    # Calculate the total number of elements needed
-    total_elements = batch_size * sequence_length
+#     # Calculate the total number of elements needed
+#     total_elements = batch_size * sequence_length
 
-    # Pad the labels to the correct total length
-    padded_labels = F.pad(input=labels, pad=(
-        0, total_elements - labels.numel()), value=0)
+#     # Pad the labels to the correct total length
+#     padded_labels = F.pad(input=labels, pad=(
+#         0, total_elements - labels.numel()), value=0)
 
-    # Reshape the labels to match the batch and sequence length
-    reshaped_labels = padded_labels.view(batch_size, sequence_length)
+#     # Reshape the labels to match the batch and sequence length
+#     reshaped_labels = padded_labels.view(batch_size, sequence_length)
 
-    # Convert to one-hot encoding
-    one_hot_labels = F.one_hot(
-        reshaped_labels, num_classes=num_classes).float()
+#     # Convert to one-hot encoding
+#     one_hot_labels = F.one_hot(
+#         reshaped_labels, num_classes=num_classes).float()
 
-    return one_hot_labels
+#     return one_hot_labels
 
 
 def train_on_data_loader(model, data_loader, device, optimizer):
