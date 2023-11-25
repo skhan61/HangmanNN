@@ -45,6 +45,7 @@ def guess_character(model, masked_word, char_frequency,
     Returns:
         str: The character guessed by the model or the fallback strategy.
     """
+    # print(f'masked word: ', masked_word)
 
     batch_features, batch_missed_characters \
         = process_batch_of_games([masked_word],
@@ -132,12 +133,13 @@ def play_game_with_a_word(model, word, char_frequency,
     guessed_letters = []  # A list to keep track of guessed characters
     attempts_remaining = max_attempts
     masked_word = "_" * len(word)
+    # print(masked_word)
     game_status = "ongoing"
 
     # print(f"Starting the game. Word to guess: {' '.join(masked_word)}")  # Display initial state
 
     while game_status == "ongoing" and attempts_remaining > 0:
-        guessed_char = guess(model, word, char_frequency,
+        guessed_char = guess(model, masked_word, char_frequency,
                              max_word_length, device, guessed_letters)
         # Add to the list of guessed letters
         guessed_letters.append(guessed_char)
