@@ -132,10 +132,13 @@ def process_batch_of_games(batch_of_games, char_frequency,
 
 
 def build_feature_set(word, char_frequency, max_word_length, ngram_n=3, normalize=True):
+    
     word_len = len(word)
 
     # Encode the word
     encoded_word = encode_word(word)
+
+    # print(f'encoded words: ', encode_word)
 
     # Features
     word_length_feature = [word_len / max_word_length] * word_len
