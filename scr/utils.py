@@ -37,21 +37,24 @@ def set_seed(seed_value):
 
 def print_scenarios(scenarios):
     for scenario in scenarios:
-        word = scenario['word']
-        difficulty = scenario['difficulty']
-        outcome = scenario['outcome']
-        game_won = scenario['data'][0]
-        guesses = scenario['data'][1]
+        # Print all key-value pairs except 'data'
+        for key, value in scenario.items():
+            if key != 'data':
+                print(f"{key.capitalize()}: {value}")
 
-        print(f"Word: {word}, Difficulty: {difficulty}, Outcome: {outcome}")
-        for guess in guesses:
-            letter, state, correct = guess
-            print(f"  Guessed '{letter}', State: {state}, Correct: {correct}")
-        print(f"  Game {'Won' if game_won else 'Lost'}")
+        # Special handling for 'data' key
+        if 'data' in scenario:
+            game_won, guesses = scenario['data']
+            print(f"  Game {'Won' if game_won else 'Lost'}")
+            for guess in guesses:
+                letter, state, correct = guess
+                print(
+                    f"  Guessed '{letter}', State: {state}, Correct: {correct}")
         print("")
 
-
 # Read a subset of words for debugging
+
+
 def read_words(filepath, limit=None):
     with open(filepath, 'r') as file:
         words = [line.strip() for line in file]

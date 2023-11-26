@@ -121,6 +121,8 @@ def guess(model, word, char_frequency,
     return guessed_char
 
 # mimic api
+
+
 def update_word_state(actual_word, current_state, guessed_char):
     return ''.join([guessed_char if actual_word[i] == guessed_char else
                     current_state[i] for i in range(len(actual_word))])
@@ -218,6 +220,26 @@ def process_word(word, mask_prob=0.9, max_variants=10):
     max_masks = max(1, int(len(set(word)) * mask_prob))
     return ['_' * word_length] + list(optimized_masked_variants(word,
                                                                 max_variants - 1, max_masks))
+
+
+def process_word_for_six_states(word):
+    word_length = len(word)
+    game_states = {
+        "early": max(1, word_length - 2),       # Mostly masked
+        "quarterRevealed": word_length // 4,    # 25% revealed
+        "midRevealed": word_length // 2,        # Half revealed
+        "midLateRevealed": 3 * word_length // 4, # 75% revealed
+        "lateRevealed": word_length - 2,        # Mostly revealed
+        "nearEnd": word_length - 1              # Nearly all revealed
+    }
+
+    masked_states = {}
+    for state, num_masked in game_states.items():
+        masked_word = ''.join(random.choice(
+            [char, '_']) if i < num_masked else char for
+            i, char in enumerate(word))
+        masked_states[state] = masked_word
+    return masked_states
 
 
 def simulate_game_progress(model, word, initial_state, char_frequency,

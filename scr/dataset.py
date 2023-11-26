@@ -30,10 +30,18 @@ class ProcessedHangmanDataset(Dataset):
                     with open(pkl_file, 'rb') as file:
                         game_states = pickle.load(file)
 
-                        parts = pkl_file.stem.split('_from_')
-                        word, remaining = parts[0], parts[1].split('_')
-                        initial_state, difficulty, outcome = '_'.join(
-                            remaining[:-2]), remaining[-2], remaining[-1]
+                        # parts = pkl_file.stem.split('_from_')
+                        # word, remaining = parts[0], parts[1].split('_')
+                        # initial_state, difficulty, outcome = '_'.join(
+                        #     remaining[:-2]), remaining[-2], remaining[-1]
+
+                        parts = pkl_file.stem.split('-from-')
+                        word, remaining = parts[0], parts[1]
+                        remaining_parts = remaining.split('-')
+                        initial_state = remaining_parts[0]
+                        state_name = remaining_parts[1]
+                        difficulty = remaining_parts[2]
+                        outcome = remaining_parts[3]
 
                         for game_state in game_states:
                             game_won, guesses = game_state
@@ -41,7 +49,7 @@ class ProcessedHangmanDataset(Dataset):
                                 states, next_guesses = self.process_game_states(
                                     guesses)
                                 additional_info = {'word': word, 'initial_state': initial_state,
-                                                   'difficulty': difficulty, 'outcome': outcome}
+                                                   'game_state': state_name, 'difficulty': difficulty, 'outcome': outcome}
                                 self.data.append(
                                     (states, next_guesses, additional_info))
 
