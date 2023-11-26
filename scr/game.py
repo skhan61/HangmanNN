@@ -224,21 +224,30 @@ def process_word(word, mask_prob=0.9, max_variants=10):
 
 def process_word_for_six_states(word):
     word_length = len(word)
-    game_states = {
-        "early": max(1, word_length - 2),       # Mostly masked
-        "quarterRevealed": word_length // 4,    # 25% revealed
-        "midRevealed": word_length // 2,        # Half revealed
-        "midLateRevealed": 3 * word_length // 4, # 75% revealed
-        "lateRevealed": word_length - 2,        # Mostly revealed
-        "nearEnd": word_length - 1              # Nearly all revealed
+    unique_chars = list(set(word))  # List of unique characters in the word
+    random.shuffle(unique_chars)  # Shuffle to get a random order
+
+    # Calculate the number of characters to reveal for each state
+    num_chars_revealed = {
+        "allMasked": 0,
+        "early": 1 if word_length > 4 else 0,
+        "quarterRevealed": len(unique_chars) // 4,
+        "midRevealed": len(unique_chars) // 2,
+        "midLateRevealed": 3 * len(unique_chars) // 4,
+        "lateRevealed": max(1, len(unique_chars) - 1),
+        "nearEnd": len(unique_chars) - 1
     }
 
     masked_states = {}
-    for state, num_masked in game_states.items():
-        masked_word = ''.join(random.choice(
-            [char, '_']) if i < num_masked else char for
-            i, char in enumerate(word))
+    chars_revealed_so_far = set()
+
+    for state, num_to_reveal in num_chars_revealed.items():
+        while len(chars_revealed_so_far) < num_to_reveal:
+            chars_revealed_so_far.add(unique_chars[len(chars_revealed_so_far)])
+        masked_word = ''.join(
+            char if char in chars_revealed_so_far else '_' for char in word)
         masked_states[state] = masked_word
+
     return masked_states
 
 

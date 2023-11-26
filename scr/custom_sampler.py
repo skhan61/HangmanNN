@@ -142,6 +142,32 @@ def stratified_sample_by_length(word_list, num_stratified_samples):
     return stratified_sampled_words
 
 
+def group_words_by_length_and_uniqueness(word_list):
+    word_groups = {}
+    for word in word_list:
+        key = (len(word), len(set(word)))
+        word_groups.setdefault(key, []).append(word)
+    return word_groups
+
+
+def stratified_sample_by_length_and_uniqueness(word_list, num_stratified_samples):
+    word_groups = group_words_by_length_and_uniqueness(word_list)
+    total_words = len(word_list)
+    stratified_sampled_words = []
+
+    for (word_length, unique_chars), words in word_groups.items():
+        proportion = len(words) / total_words
+        num_samples_per_group = max(
+            1, round(proportion * num_stratified_samples))
+
+        # Randomly sample words within each length and uniqueness group
+        sampled_words = random.sample(
+            words, min(len(words), num_samples_per_group))
+        stratified_sampled_words.extend(sampled_words)
+
+    return stratified_sampled_words
+
+
 # Helper function to group words by their length
 
 
