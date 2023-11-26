@@ -1,7 +1,9 @@
 import gc
+import multiprocessing
 import pickle
 import random
 from collections import Counter, defaultdict
+from functools import partial
 from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
@@ -16,40 +18,6 @@ from scr.feature_engineering import *
 
 gc.collect()
 
-
-# class ProportionalWordLengthSampler(Sampler):
-#     def __init__(self, data_list, batch_size):
-#         self.data_list = data_list
-#         self.batch_size = batch_size
-#         self.word_length_distribution = self.calculate_word_length_distribution()
-#         self.total_samples = len(data_list)
-#         self.indices_per_word_length = {
-#             wl: iter(indices) for wl, indices in self.word_length_distribution.items()}
-
-#     def calculate_word_length_distribution(self):
-#         word_length_dict = defaultdict(list)
-#         for idx, (_, _, info) in enumerate(self.data_list):
-#             word_length = info['word_length']
-#             word_length_dict[word_length].append(idx)
-#         return word_length_dict
-
-#     def __iter__(self):
-#         batch = []
-#         while len(batch) < self.total_samples:
-#             for word_length, indices in self.indices_per_word_length.items():
-#                 try:
-#                     if len(batch) < self.total_samples:
-#                         batch.append(next(indices))
-#                         if len(batch) == self.batch_size:
-#                             yield batch
-#                             batch = []
-#                 except StopIteration:
-#                     continue
-#         if batch:
-#             yield batch
-
-#     def __len__(self):
-#         return (self.total_samples + self.batch_size - 1) // self.batch_size
 
 class ProportionalWordLengthSampler(Sampler):
     def __init__(self, data_list, batch_size):
@@ -96,25 +64,73 @@ class ProportionalWordLengthSampler(Sampler):
         return len(self.batches)
 
 
+# class ProcessedHangmanDataset(Dataset):
+#     def __init__(self, pkls_dir, char_freq,
+#                  max_word_length, samples_limit=None):
+#         self.char_frequency = char_freq
+#         self.max_word_length = max_word_length
+#         self.data = []
+
+#         samples_count = 0
+
+#         for batch_dir in sorted(pkls_dir.iterdir(),
+#                                 key=lambda x: int(x.name) if x.name.isdigit() else float('inf')):
+#             if batch_dir.is_dir():
+#                 for pkl_file in batch_dir.glob("*.pkl"):
+#                     with open(pkl_file, 'rb') as file:
+#                         game_states = pickle.load(file)
+
+#                         parts = pkl_file.stem.split('-from-')
+#                         word, remaining = parts[0], parts[1]
+#                         remaining_parts = remaining.split('-')
+#                         initial_state = remaining_parts[0]
+#                         state_name = remaining_parts[1]
+#                         difficulty = remaining_parts[2]
+#                         outcome = remaining_parts[3]
+#                         word_length = remaining_parts[4]
+
+#                         for game_state in game_states:
+#                             if samples_limit and samples_count >= samples_limit:
+#                                 break
+#                             game_won, guesses = game_state
+#                             if len(guesses) > 0:
+#                                 states, next_guesses = self.process_game_states(
+#                                     guesses)
+#                                 additional_info = {'word': word, 'initial_state': initial_state,
+#                                                    'game_state': state_name, 'difficulty': difficulty,
+#                                                    'outcome': outcome, 'word_length': word_length}
+#                                 self.data.append(
+#                                     (states, next_guesses, additional_info))
+#                             samples_count += 1
+
+#                     if samples_limit and samples_count >= samples_limit:
+#                         break
+#             if samples_limit and samples_count >= samples_limit:
+#                 break
+
+#     def get_word_length_distribution(self):
+#         word_length_dict = defaultdict(list)
+#         for idx, (_, _, info) in enumerate(self.data):
+#             word_length = info['word_length']
+#             word_length_dict[word_length].append(idx)
+#         return word_length_dict
+
+
 class ProcessedHangmanDataset(Dataset):
-    def __init__(self, pkls_dir, char_freq, max_word_length):
-
-        self.char_frequency = char_freq  # Store char_freq as an attribute
+    def __init__(self, pkls_dir, char_freq,
+                 max_word_length, samples_limit=None):
+        self.char_frequency = char_freq
         self.max_word_length = max_word_length
-        self.data = []  # Stores tuples of (game_state, label, additional_info)
-        # self.mode = mode
+        self.data = []
 
-        for batch_dir in sorted(pkls_dir.iterdir(), key=lambda x: int(x.name)
-                                if x.name.isdigit() else float('inf')):
+        samples_count = 0
+
+        for batch_dir in sorted(pkls_dir.iterdir(),
+                                key=lambda x: int(x.name) if x.name.isdigit() else float('inf')):
             if batch_dir.is_dir():
                 for pkl_file in batch_dir.glob("*.pkl"):
                     with open(pkl_file, 'rb') as file:
                         game_states = pickle.load(file)
-
-                        # parts = pkl_file.stem.split('_from_')
-                        # word, remaining = parts[0], parts[1].split('_')
-                        # initial_state, difficulty, outcome = '_'.join(
-                        #     remaining[:-2]), remaining[-2], remaining[-1]
 
                         parts = pkl_file.stem.split('-from-')
                         word, remaining = parts[0], parts[1]
@@ -126,6 +142,8 @@ class ProcessedHangmanDataset(Dataset):
                         word_length = remaining_parts[4]
 
                         for game_state in game_states:
+                            if samples_limit and samples_count >= samples_limit:
+                                break
                             game_won, guesses = game_state
                             if len(guesses) > 0:
                                 states, next_guesses = self.process_game_states(
@@ -133,17 +151,14 @@ class ProcessedHangmanDataset(Dataset):
                                 additional_info = {'word': word, 'initial_state': initial_state,
                                                    'game_state': state_name, 'difficulty': difficulty,
                                                    'outcome': outcome, 'word_length': word_length}
-                                # Add to the nested dictionary
-                                # word_length = len(word)
-                                # nested_category_dict[word_length][difficulty][outcome][state_name].append(
-                                #     (states, next_guesses, additional_info))
-
                                 self.data.append(
                                     (states, next_guesses, additional_info))
+                            samples_count += 1
 
-        # # Sample balanced data using the nested dictionary
-        # self.data = sample_balanced_data(
-        #     nested_category_dict, samples_per_subcategory)
+                    if samples_limit and samples_count >= samples_limit:
+                        break
+            if samples_limit and samples_count >= samples_limit:
+                break
 
     def get_word_length_distribution(self):
         word_length_dict = defaultdict(list)
