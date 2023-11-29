@@ -105,8 +105,9 @@ class SimpleLSTM(BaseModel):
         output_packed, (hidden, cell) = self.rnn(x_packed)
 
         # Unpack the sequence
+        # 
         output, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            output_packed, batch_first=True)
+            output_packed, batch_first=True) # No use
 
         # Process missed characters
         # miss_chars_processed = self.miss_linear(miss_chars.squeeze())

@@ -33,7 +33,8 @@ class BaseModel(nn.Module):
     @staticmethod
     def load_model(model_class, filename, device=None, config_path=None):
         if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu")
         # print("Device before loading model:", device)
 
         checkpoint = torch.load(filename, map_location=device)
@@ -56,6 +57,7 @@ class BaseModel(nn.Module):
             for state in model.optimizer.state.values():
                 for k, v in state.items():
                     if isinstance(v, torch.Tensor):
-                        state[k] = v.to(device)  # Move optimizer state to device
+                        # Move optimizer state to device
+                        state[k] = v.to(device)
 
         return model
