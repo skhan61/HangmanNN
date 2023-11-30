@@ -1,7 +1,9 @@
 from collections import defaultdict
+from multiprocessing import Pool
 
 import torch
 import torch.nn.functional as F
+import torch.optim
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 
@@ -12,37 +14,84 @@ from scr.game import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def train_on_data_loader(model, data_loader, device, optimizer):
-    model.train()  # Set the model to training mode
+# def train_on_data_loader(model, data_loader, device, optimizer):
+#     model.train()  # Set the model to training mode
+#     model.to(device)
+#     total_loss = 0
+#     total_miss_penalty = 0
+#     total_batches = 0
+
+#     for batch in data_loader:
+#         if batch[0] is None:
+#             # print("Encountered an empty batch")
+#             continue  # Skip empty batches
+
+#         game_states_batch, lengths_batch, missed_chars_batch, labels_batch, _ = batch
+#         game_states_batch, lengths_batch, missed_chars_batch \
+#             = game_states_batch.to(device), \
+#             lengths_batch, missed_chars_batch.to(device)
+
+#         # Assuming 'model' is your trained model
+#         outputs = model(game_states_batch, lengths_batch, missed_chars_batch)
+
+#         # Reshape labels to match model output
+#         reshaped_labels = pad_and_reshape_labels(labels_batch, outputs.shape)
+#         reshaped_labels = reshaped_labels.to(device)
+
+#         # Compute loss and miss penalty
+#         loss, miss_penalty = model.calculate_loss(outputs, reshaped_labels,
+#                                                   lengths_batch, missed_chars_batch, 27)
+
+#         # Backpropagation
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+
+#         total_loss += loss.item()
+#         total_miss_penalty += miss_penalty.item()
+#         total_batches += 1
+
+#     average_loss = total_loss / total_batches if total_batches > 0 else 0
+#     average_miss_penalty = total_miss_penalty / \
+#         total_batches if total_batches > 0 else 0
+#     return average_loss, average_miss_penalty
+
+
+def train_on_data_loader(model, data_loader, device, optimizer, l1_lambda=0.001, l2_lambda=0.001):
+    model.train()
     model.to(device)
     total_loss = 0
     total_miss_penalty = 0
     total_batches = 0
 
+    optimizer_type = type(optimizer).__name__
+
     for batch in data_loader:
         if batch[0] is None:
-            # print("Encountered an empty batch")
-            continue  # Skip empty batches
+            continue
 
         game_states_batch, lengths_batch, missed_chars_batch, labels_batch, _ = batch
-        game_states_batch, lengths_batch, missed_chars_batch \
-            = game_states_batch.to(device), \
-            lengths_batch, missed_chars_batch.to(device)
+        game_states_batch, lengths_batch, missed_chars_batch = game_states_batch.to(
+            device), lengths_batch, missed_chars_batch.to(device)
 
-        # Assuming 'model' is your trained model
         outputs = model(game_states_batch, lengths_batch, missed_chars_batch)
+        reshaped_labels = pad_and_reshape_labels(
+            labels_batch, outputs.shape).to(device)
+        loss, miss_penalty = model.calculate_loss(
+            outputs, reshaped_labels, lengths_batch, missed_chars_batch, 27)
 
-        # Reshape labels to match model output
-        reshaped_labels = pad_and_reshape_labels(labels_batch, outputs.shape)
-        reshaped_labels = reshaped_labels.to(device)
+        l1_norm = sum(p.abs().sum() for p in model.parameters())
+        l2_norm = sum(p.pow(2.0).sum() for p in model.parameters())
 
-        # Compute loss and miss penalty
-        loss, miss_penalty = model.calculate_loss(outputs, reshaped_labels,
-                                                  lengths_batch, missed_chars_batch, 27)
+        if optimizer_type == 'Adam':
+            total_loss_with_reg = loss + l1_lambda * l1_norm
+        elif optimizer_type == 'SGD':
+            total_loss_with_reg = loss + l1_lambda * l1_norm + l2_lambda * l2_norm
+        else:
+            total_loss_with_reg = loss  # Default case if not Adam or SGD
 
-        # Backpropagation
         optimizer.zero_grad()
-        loss.backward()
+        total_loss_with_reg.backward()
         optimizer.step()
 
         total_loss += loss.item()
@@ -54,10 +103,12 @@ def train_on_data_loader(model, data_loader, device, optimizer):
         total_batches if total_batches > 0 else 0
     return average_loss, average_miss_penalty
 
+# Assuming play_game_with_a_word can be parallelized
 
 def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
                      device, unique_words_set, max_attempts=6, normalize=True,
                      max_games_per_epoch=1000):
+
     char_loss_total, char_miss_penalty_total = 0, 0
     game_wins_total, game_attempts_total, game_total_count = 0, 0, 0
     game_word_statistics = {}
@@ -121,6 +172,7 @@ def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
     return {
         "avg_loss": avg_char_loss,
         "avg_miss_penalty": avg_char_miss_penalty,
+
         "game_simulation": {
             "win_rate": game_win_rate,
             "average_attempts": avg_game_attempts,

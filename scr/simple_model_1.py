@@ -20,12 +20,6 @@ class SimpleLSTM(BaseModel):
         self.use_embedding = config.get('use_embedding', True)
         self.lr = config.get('lr', 0.0001)  # Default learning rate
 
-        # Dropout probability
-        self.dropout_prob = config.get('dropout_prob', 0.5)  # Can be tuned
-
-        # Add a dropout layer
-        self.dropout = nn.Dropout(self.dropout_prob)
-
         # # Device handling
         # self.device = torch.device("cuda" if torch.cuda.is_available(
         # ) and config.get('use_cuda', False) else "cpu")
@@ -38,13 +32,11 @@ class SimpleLSTM(BaseModel):
         else:
             rnn_input_size = self.input_feature_size * self.max_word_length
 
-        # LSTM with dropout
         self.rnn = nn.LSTM(input_size=rnn_input_size,
                            hidden_size=self.hidden_dim,
                            num_layers=self.num_layers,
                            bidirectional=True,
-                           batch_first=True,
-                           dropout=self.dropout_prob if self.num_layers > 1 else 0)  # Apply dropout between LSTM layers if more than one layer
+                           batch_first=True)
 
         self.miss_linear = nn.Linear(
             self.vocab_size, config.get('miss_linear_dim', 50))
@@ -90,11 +82,10 @@ class SimpleLSTM(BaseModel):
         other_features_reshaped = other_features.reshape(
             batch_size * max_seq_length, self.max_word_length, -1)
 
+        # Embedding and concatenation
         if self.use_embedding:
             embedded_chars = self.embedding(
                 char_indices_flattened.to(self.device))
-            # Apply dropout after embedding
-            embedded_chars = self.dropout(embedded_chars)
             rnn_input = torch.cat(
                 (embedded_chars, other_features_reshaped), dim=-1)
         else:
@@ -114,9 +105,9 @@ class SimpleLSTM(BaseModel):
         output_packed, (hidden, cell) = self.rnn(x_packed)
 
         # Unpack the sequence
-        #
+        # 
         output, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            output_packed, batch_first=True)  # No use
+            output_packed, batch_first=True) # No use
 
         # Process missed characters
         # miss_chars_processed = self.miss_linear(miss_chars.squeeze())
@@ -157,11 +148,11 @@ class SimpleLSTM(BaseModel):
         # concatenated = torch.cat(
         #     (hidden_combined, miss_chars_processed), dim=2)
 
-        # Apply dropout before the final linear layer
-        concatenated = self.dropout(concatenated)
-
         out = self.linear_out(F.relu(concatenated))
 
+        # print(f'out shape: ', out.shape)
+
+        # Reshape to the desired output
         return out
 
     def calculate_loss(self, model_out, labels,
