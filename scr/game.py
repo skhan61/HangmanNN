@@ -121,8 +121,6 @@ def guess(model, word, char_frequency,
     return guessed_char
 
 # mimic api
-
-
 def update_word_state(actual_word, current_state, guessed_char):
     return ''.join([guessed_char if actual_word[i] == guessed_char else
                     current_state[i] for i in range(len(actual_word))])

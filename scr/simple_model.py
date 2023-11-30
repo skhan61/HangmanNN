@@ -1,3 +1,7 @@
+#         # Set the device attribute based on CUDA availability
+#         self.device = torch.device(
+#             "cuda" if torch.cuda.is_available() else "cpu")
+#         self.to(self.device)  # Move the model to the specified device
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # Add this line
@@ -5,6 +9,74 @@ import torch.optim as optim
 from sklearn.metrics import f1_score, precision_score, recall_score
 
 from scr.base_model import BaseModel
+
+# class SimpleLSTM(BaseModel):
+#     def __init__(self, config):
+
+#         super(SimpleLSTM, self).__init__(config)
+#         self.embedding_dim = config.get('embedding_dim', 200)
+#         self.hidden_dim = config.get('hidden_dim', 256)
+#         self.num_layers = config.get('num_layers', 2)
+#         # Defaulting to 26 letters + 1
+#         self.vocab_size = config.get('vocab_size', 27)
+#         self.max_word_length = config.get('max_word_length', 5)
+#         self.input_feature_size = config.get('input_feature_size', 5)
+#         self.use_embedding = config.get('use_embedding', True)
+#         self.lr = config.get('lr', 0.0001)  # Default learning rate
+
+#         # Dropout probability
+#         self.dropout_prob = config.get('dropout_prob', 0.5)  # Can be tuned
+
+#         # Add a dropout layer
+#         self.dropout = nn.Dropout(self.dropout_prob)
+
+#         # # Device handling
+#         # self.device = torch.device("cuda" if torch.cuda.is_available(
+#         # ) and config.get('use_cuda', False) else "cpu")
+
+#         if self.use_embedding:
+#             self.embedding = nn.Embedding(
+#                 self.vocab_size + 1, self.embedding_dim)
+#             rnn_input_size = self.embedding_dim * self.max_word_length + \
+#                 (self.input_feature_size - 1) * self.max_word_length
+#         else:
+#             rnn_input_size = self.input_feature_size * self.max_word_length
+
+#         # LSTM with dropout
+#         self.rnn = nn.LSTM(input_size=rnn_input_size,
+#                            hidden_size=self.hidden_dim,
+#                            num_layers=self.num_layers,
+#                            bidirectional=True,
+#                            batch_first=True,
+#                            dropout=self.dropout_prob if self.num_layers > 1 else 0)  # Apply dropout between LSTM layers if more than one layer
+
+#         self.miss_linear = nn.Linear(
+#             self.vocab_size, config.get('miss_linear_dim', 50))
+
+#         # The input dimension for the linear layer should be the LSTM output dimension (hidden_dim * 2)
+#         # plus the dimension of miss_chars if concatenated.
+#         linear_input_dim = self.hidden_dim * \
+#             2 + config.get('miss_linear_dim', 50)
+
+#         self.linear_out = nn.Linear(linear_input_dim, self.vocab_size)
+
+#         # self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+
+#                 # Initialize optimizer
+#         optimizer_type = config.get('optimizer_type', 'Adam').lower()
+#         lr = config.get('lr', 0.0001)
+
+#         if optimizer_type == 'adam':
+#             self.optimizer = optim.Adam(self.parameters(), lr=lr)
+#         elif optimizer_type == 'sgd':
+#             momentum = config.get('momentum', 0.9)
+#             self.optimizer = optim.SGD(self.parameters(), lr=lr, momentum=momentum)
+#         # Add more optimizers here as needed
+#         else:
+#             raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
+
+#         # # Move all layers to the correct device
+#         # self.to(self.device)
 
 
 class SimpleLSTM(BaseModel):
@@ -18,17 +90,8 @@ class SimpleLSTM(BaseModel):
         self.max_word_length = config.get('max_word_length', 5)
         self.input_feature_size = config.get('input_feature_size', 5)
         self.use_embedding = config.get('use_embedding', True)
-        self.lr = config.get('lr', 0.0001)  # Default learning rate
-
-        # Dropout probability
-        self.dropout_prob = config.get('dropout_prob', 0.5)  # Can be tuned
-
-        # Add a dropout layer
-        self.dropout = nn.Dropout(self.dropout_prob)
-
-        # # Device handling
-        # self.device = torch.device("cuda" if torch.cuda.is_available(
-        # ) and config.get('use_cuda', False) else "cpu")
+        self.dropout_prob = config.get(
+            'dropout_prob', 0.5)  # Dropout probability
 
         if self.use_embedding:
             self.embedding = nn.Embedding(
@@ -38,33 +101,39 @@ class SimpleLSTM(BaseModel):
         else:
             rnn_input_size = self.input_feature_size * self.max_word_length
 
-        # LSTM with dropout
         self.rnn = nn.LSTM(input_size=rnn_input_size,
                            hidden_size=self.hidden_dim,
                            num_layers=self.num_layers,
                            bidirectional=True,
                            batch_first=True,
-                           dropout=self.dropout_prob if self.num_layers > 1 else 0)  # Apply dropout between LSTM layers if more than one layer
+                           dropout=self.dropout_prob if self.num_layers > 1 else 0)
 
         self.miss_linear = nn.Linear(
             self.vocab_size, config.get('miss_linear_dim', 50))
-
-        # The input dimension for the linear layer should be the LSTM output dimension (hidden_dim * 2)
-        # plus the dimension of miss_chars if concatenated.
         linear_input_dim = self.hidden_dim * \
             2 + config.get('miss_linear_dim', 50)
-
         self.linear_out = nn.Linear(linear_input_dim, self.vocab_size)
+        self.dropout = nn.Dropout(self.dropout_prob)
 
-        self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        # Initialize optimizer
+        optimizer_type = config.get('optimizer_type', 'Adam').lower()
+        lr = config.get('lr', 0.0001)
+        if optimizer_type == 'adam':
+            self.optimizer = optim.Adam(
+                self.parameters(), lr=lr, weight_decay=0.001)
+        elif optimizer_type == 'sgd':
+            momentum = config.get('momentum', 0.9)
+            self.optimizer = optim.SGD(
+                self.parameters(), lr=lr, momentum=momentum)
+        else:
+            raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
 
-        # # Move all layers to the correct device
-        # self.to(self.device)
-
-        # Set the device attribute based on CUDA availability
+        # Device handling
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
-        self.to(self.device)  # Move the model to the specified device
+        self.to(self.device)
+
+    # [rest of the class methods, including forward() and calculate_loss()]
 
     def forward(self, x, x_lens, miss_chars):
         # Move input data to the correct device
@@ -175,7 +244,8 @@ class SimpleLSTM(BaseModel):
         miss_chars = miss_chars.to(self.device)
         input_lens = input_lens.to(self.device)
 
-        # Apply sigmoid to model output (BCEWithLogitsLoss does this internally, so this is for miss_penalty calculation)
+        # Apply sigmoid to model output (BCEWithLogitsLoss does this internally,
+        # so this is for miss_penalty calculation)
         outputs = torch.sigmoid(model_out)
 
         # print(f'output shape: ', outputs.shape)
