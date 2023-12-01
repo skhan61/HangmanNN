@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from functools import partial
 from multiprocessing import Pool
 from multiprocessing.pool import ThreadPool
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,86 +23,145 @@ gc.collect()
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, batch_size,
-                 performance_dict, random_sampling_rate=0.1):
+    def __init__(self, data_source, batch_size, performance_dict, random_sampling_rate=0.1):
         self.data_source = data_source
         self.batch_size = batch_size
         self.performance_dict = performance_dict
         self.random_sampling_rate = random_sampling_rate
         self.word_length_indices = self.precompute_indices()
-        self.word_length_probs = self.calculate_probs()
+        self.calculate_probs()
 
     def precompute_indices(self):
         indices_dict = defaultdict(list)
         for idx, (_, _, info) in enumerate(self.data_source):
-            word_length = info['word_length']
+            word_length = str(info['word_length'])
             indices_dict[word_length].append(idx)
         return indices_dict
 
     def calculate_probs(self):
         win_rates = {}
         for word_length, stats in self.performance_dict.items():
+            word_length_str = str(word_length)
             total_games = stats['wins'] + stats['losses']
-            if total_games > 0:
-                win_rate = (stats['wins'] / total_games) * 100  # percentage
-            else:
-                win_rate = 0
-            win_rates[word_length] = win_rate
+            win_rate = (stats['wins'] / total_games) * 100 if total_games > 0 else 0
+            win_rates[word_length_str] = win_rate
 
-        # Inverting the win rates to prioritize struggling word lengths
-        # Adding a small constant (e.g., 0.01) to avoid division by zero
-        performance_metric = {wl: 1.0 / (win_rate + 0.01)
-                              for wl, win_rate in win_rates.items()}
-
+        performance_metric = {wl: 1.0 / (win_rate + 0.01) for wl, win_rate in win_rates.items()}
         total = sum(performance_metric.values())
-        normalized_probs = {wl: metric / total for wl,
-                            metric in performance_metric.items()}
-        return normalized_probs
+        self.word_length_probs = np.array([metric / total for metric in performance_metric.values()])
+        self.word_lengths = list(performance_metric.keys())
 
     def __iter__(self):
-        dataset_size = len(self.data_source)
-        used_indices = set()
-        pending_batch_indices = []
+        all_indices = list(range(len(self.data_source)))
+        np.random.shuffle(all_indices)
 
-        while len(used_indices) < dataset_size:
-            if random.random() < self.random_sampling_rate:
-                word_length = random.choice(list(self.performance_dict.keys()))
+        for idx in all_indices:
+            if random.random() < self.random_sampling_rate or len(self.word_lengths) == 0:
+                yield idx
             else:
-                word_length = np.random.choice(list(self.word_length_probs.keys()),
-                                               p=list(self.word_length_probs.values()))
-
-            wl_indices = self.word_length_indices[str(word_length)]
-            wl_indices = [idx for idx in wl_indices if idx not in used_indices]
-
-            if wl_indices:
-                selected_indices = random.sample(
-                    wl_indices, min(len(wl_indices), self.batch_size))
-                pending_batch_indices.extend(selected_indices)
-                used_indices.update(selected_indices)
-
-            while len(pending_batch_indices) >= self.batch_size:
-                yield_indices = pending_batch_indices[:self.batch_size]
-                pending_batch_indices = pending_batch_indices[self.batch_size:]
-                yield yield_indices
-
-        if pending_batch_indices:
-            yield pending_batch_indices
+                word_length = np.random.choice(self.word_lengths, p=self.word_length_probs)
+                if word_length in self.word_length_indices and self.word_length_indices[word_length]:
+                    selected_index = self.word_length_indices[word_length].pop()
+                    yield selected_index
+                else:
+                    yield idx
 
     def __len__(self):
-        return (dataset_size + self.batch_size - 1) // self.batch_size
+        return len(self.data_source)
+
+
+# class PerformanceBasedSampler(Sampler):
+#     def __init__(self, data_source, batch_size, performance_dict, random_sampling_rate=0.1):
+#         self.data_source = data_source
+#         self.batch_size = batch_size
+#         self.performance_dict = performance_dict
+#         self.random_sampling_rate = random_sampling_rate
+#         self.word_length_indices = self.precompute_indices()
+#         self.word_length_probs = self.calculate_probs()
+#         self.available_indices = {
+#             wl: set(idxs) for wl, idxs in self.word_length_indices.items() if wl in self.performance_dict
+#         }
+
+#         # # Additional debug prints
+#         # print(f"Word length indices: {self.word_length_indices}")  # Debug line
+#         # # Debug line
+#         # print(f"Word length probabilities: {self.word_length_probs}")
+#         # print(f"Available indices: {self.available_indices}")  # Debug line
+#         # print(f"Performance dict: {self.performance_dict}")  # Debug line
+
+#     def precompute_indices(self):
+#         indices_dict = defaultdict(list)
+#         for idx, (_, _, info) in enumerate(self.data_source):
+#             word_length = str(info['word_length'])  # Ensure string format
+#             indices_dict[word_length].append(idx)
+#             # Detailed debug line
+#             # print(f"Index: {idx}, Word length: {word_length}")
+#             # break
+
+#         # print(f"Precomputed indices dict: {indices_dict}")  # Debug line
+#         return indices_dict
+
+#     def calculate_probs(self):
+#         win_rates = {}
+#         for word_length, stats in self.performance_dict.items():
+#             word_length_str = str(word_length)
+#             if word_length_str in self.word_length_indices:
+#                 total_games = stats['wins'] + stats['losses']
+#                 win_rate = (stats['wins'] / total_games) * \
+#                     100 if total_games > 0 else 0
+#                 win_rates[word_length_str] = win_rate
+
+#         if not win_rates:
+#             return np.array([]), []
+
+#         performance_metric = {wl: 1.0 / (win_rate + 0.01)
+#                               for wl, win_rate in win_rates.items()}
+#         total = sum(performance_metric.values())
+#         probs = np.array(
+#             [metric / total for metric in performance_metric.values()])
+#         word_lengths = list(performance_metric.keys())
+#         return probs, word_lengths
+
+#     def __iter__(self):
+#         self.word_length_probs, self.word_lengths = self.calculate_probs()
+#         all_indices = list(range(len(self.data_source)))
+#         np.random.shuffle(all_indices)
+
+#         batch_indices = []
+#         while all_indices:
+#             if random.random() < self.random_sampling_rate:
+#                 index = all_indices.pop()
+#                 batch_indices.append(index)
+#             else:
+#                 word_length = np.random.choice(
+#                     self.word_lengths, p=self.word_length_probs)
+#                 if self.available_indices.get(word_length, set()):
+#                     selected_index = self.available_indices[word_length].pop()
+#                     all_indices.remove(selected_index)
+#                     batch_indices.append(selected_index)
+
+#             if len(batch_indices) == self.batch_size:
+#                 yield batch_indices
+#                 batch_indices = []
+
+#         # Yield the last batch if it's not empty
+#         if batch_indices:
+#             yield batch_indices
+
+#     def __len__(self):
+#         return (len(self.data_source) + self.batch_size - 1) // self.batch_size
 
 
 class ProcessedHangmanDataset(Dataset):
-    def __init__(self, pkls_dir, char_freq, max_word_length,
-                 files_limit=None):
+    def __init__(self, pkls_dir, char_freq, max_word_length, files_limit=None):
         self.char_frequency = char_freq
         self.max_word_length = max_word_length
+        # Total number of unique characters
+        self.total_char_count = len(self.char_frequency)
         self.data = []
 
         files_processed = 0
-
-        for batch_dir in sorted(pkls_dir.iterdir(),
-                                key=lambda x: int(x.name)
+        for batch_dir in sorted(Path(pkls_dir).iterdir(), key=lambda x: int(x.name)
                                 if x.name.isdigit() else float('inf')):
             if batch_dir.is_dir():
                 for pkl_file in batch_dir.glob("*.pkl"):
@@ -131,7 +191,6 @@ class ProcessedHangmanDataset(Dataset):
                                     (states, next_guesses, additional_info))
 
                     files_processed += 1
-
             if files_limit and files_processed >= files_limit:
                 break
 
@@ -161,48 +220,62 @@ class ProcessedHangmanDataset(Dataset):
         return word_length_dict
 
     def custom_collate_fn(self, batch):
-        batch_features, batch_missed_chars, batch_labels, \
-            batch_lengths, batch_additional_info = [], [], [], [], []
-        max_seq_length = 0  # Track the maximum sequence length in the batch
+        # print(f"Received batch (size {len(batch)}): {batch}")  # Debug line
+
+        batch_features, batch_missed_chars, \
+            batch_labels, batch_lengths, batch_additional_info = [], [], [], [], []
+
+        # Debug line to check if the batch contains any game_states
+        if all(not game_states for game_states, _, _ in batch):
+            # print("All game_states in the batch are empty")  # Debug line
+            return None, None, None, None, None
+
+        # Calculating the max sequence length with debug line
+        game_states_lengths = [len(game_states)
+                               for game_states, _, _ in batch if game_states]
+        # print(f"game_states lengths: {game_states_lengths}")  # Debug line
+        max_seq_length = max(game_states_lengths)
+
+        # Preallocate padding tensors
+        padding_tensor_features = torch.zeros(
+            (1, self.max_word_length * len(self.char_frequency)))
+        padding_tensor_missed_chars = torch.zeros(
+            (1, len(self.char_frequency)))
 
         for item in batch:
             game_states, labels, additional_info = item
-            if not game_states:
-                continue
 
-            max_seq_length = max(max_seq_length, len(game_states))
-            # Append additional info for each game
-            batch_additional_info.append(additional_info)
-
-        # Now, process each game again to pad sequences and collect batch data
-        for item in batch:
-            game_states, labels, _ = item
+            # Debug line to check each item in the batch
             if not game_states:
+                # print(f"Encountered an item with empty game_states: {item}")  # Debug line
                 continue
 
             game_features, game_missed_chars = process_game_sequence(
                 game_states, self.char_frequency, self.max_word_length, len(game_states))
 
-            # Record the original length of each game state sequence
             original_length = len(game_states)
             batch_lengths.append(original_length)
+            batch_additional_info.append(additional_info)
 
-            # Pad each game's features and missed characters to the maximum sequence length
+            # Debug line for padding information
+            # print(f"Original length: {original_length}, Max sequence length: {max_seq_length}")  # Debug line
+
             if original_length < max_seq_length:
                 padding_length = max_seq_length - original_length
 
-                # Create padding tensor for game_features
-                padding_tensor_features = torch.zeros(
-                    padding_length, game_features.shape[1])
-                game_features_padded = torch.cat(
-                    [game_features, padding_tensor_features], dim=0)
+                # Resize padding tensors if necessary
+                if padding_tensor_features.shape[1] != game_features.shape[1]:
+                    padding_tensor_features = torch.zeros(
+                        (1, game_features.shape[1]))
+                if padding_tensor_missed_chars.shape[1] != game_missed_chars.shape[1]:
+                    padding_tensor_missed_chars = torch.zeros(
+                        (1, game_missed_chars.shape[1]))
 
-                # Create a separate padding tensor for game_missed_chars
-                padding_tensor_missed_chars = \
-                    torch.zeros(padding_length, game_missed_chars.shape[1])
-                game_missed_chars_padded = \
-                    torch.cat(
-                        [game_missed_chars, padding_tensor_missed_chars], dim=0)
+                # Concatenate features and padding
+                game_features_padded = torch.cat(
+                    [game_features, padding_tensor_features.repeat(padding_length, 1)], dim=0)
+                game_missed_chars_padded = torch.cat(
+                    [game_missed_chars, padding_tensor_missed_chars.repeat(padding_length, 1)], dim=0)
             else:
                 game_features_padded = game_features
                 game_missed_chars_padded = game_missed_chars
@@ -211,13 +284,10 @@ class ProcessedHangmanDataset(Dataset):
             batch_missed_chars.append(game_missed_chars_padded)
             batch_labels.extend([char_to_idx[label] for label in labels])
 
-        # Before stacking, check if the lists are empty
-        if not batch_features or not batch_missed_chars:
-            # Handle empty batch here, maybe skip or return None
-            print("Encountered an empty batch form collate")
-            return None, None, None, None
+        if not batch_features:
+            # print("The processed batch is empty after filtering empty game_states.")  # Debug line
+            return None, None, None, None, None
 
-        # Stack all games to form the batch
         batch_features_stacked = torch.stack(batch_features)
         batch_missed_chars_stacked = torch.stack(batch_missed_chars)
         labels_tensor = torch.tensor(batch_labels, dtype=torch.long)
@@ -225,6 +295,70 @@ class ProcessedHangmanDataset(Dataset):
 
         return batch_features_stacked, lengths_tensor, \
             batch_missed_chars_stacked, labels_tensor, batch_additional_info
+
+    # def custom_collate_fn(self, batch):
+    #     print(f"Received batch (size {len(batch)}): {batch}")  # Debug line
+
+    #     batch_features, batch_missed_chars, \
+    #         batch_labels, batch_lengths, batch_additional_info = [], [], [], [], []
+
+    #     max_seq_length = max(len(game_states)
+    #                          for game_states, _, _ in batch if game_states)
+
+    #     # Preallocate padding tensors
+    #     padding_tensor_features = torch.zeros(
+    #         (1, self.max_word_length * len(self.char_frequency)))
+    #     padding_tensor_missed_chars = torch.zeros(
+    #         (1, len(self.char_frequency)))
+
+    #     for item in batch:
+    #         game_states, labels, additional_info = item
+    #         if not game_states:
+    #             continue
+
+    #         game_features, game_missed_chars = process_game_sequence(
+    #             game_states, self.char_frequency, self.max_word_length, len(game_states))
+
+    #         original_length = len(game_states)
+    #         batch_lengths.append(original_length)
+    #         batch_additional_info.append(additional_info)
+
+    #         if original_length < max_seq_length:
+    #             padding_length = max_seq_length - original_length
+
+    #             # Resize padding tensors if necessary
+    #             if padding_tensor_features.shape[1] != game_features.shape[1]:
+    #                 padding_tensor_features = torch.zeros(
+    #                     (1, game_features.shape[1]))
+
+    #             if padding_tensor_missed_chars.shape[1] != game_missed_chars.shape[1]:
+    #                 padding_tensor_missed_chars = torch.zeros(
+    #                     (1, game_missed_chars.shape[1]))
+
+    #             # Concatenate features and padding
+    #             game_features_padded = torch.cat(
+    #                 [game_features, padding_tensor_features.repeat(padding_length, 1)], dim=0)
+    #             game_missed_chars_padded = torch.cat(
+    #                 [game_missed_chars, padding_tensor_missed_chars.repeat(padding_length, 1)], dim=0)
+    #         else:
+    #             game_features_padded = game_features
+    #             game_missed_chars_padded = game_missed_chars
+
+    #         batch_features.append(game_features_padded)
+    #         batch_missed_chars.append(game_missed_chars_padded)
+    #         batch_labels.extend([char_to_idx[label] for label in labels])
+
+    #     if not batch_features:
+    #         print("Encountered an empty batch form collate")
+    #         return None, None, None, None, None
+
+    #     batch_features_stacked = torch.stack(batch_features)
+    #     batch_missed_chars_stacked = torch.stack(batch_missed_chars)
+    #     labels_tensor = torch.tensor(batch_labels, dtype=torch.long)
+    #     lengths_tensor = torch.tensor(batch_lengths, dtype=torch.long)
+
+    #     return batch_features_stacked, lengths_tensor, \
+    #         batch_missed_chars_stacked, labels_tensor, batch_additional_info
 
     def create_validation_samples(self, game_data):
         validation_samples = []
