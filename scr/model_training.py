@@ -42,7 +42,7 @@ def train_on_data_loader(model, data_loader, device, l1_lambda=0.001, l2_lambda=
 
         # Normalization of loss components
         normalized_loss = loss # / (loss + 1e-6)
-        normalized_miss_penalty = miss_penalty
+        normalized_miss_penalty = 2 * miss_penalty
 
         # # Debug: Print the loss and miss penalty every N batches
         # if batch_idx % 50 == 0:  # Adjust N according to your preference
