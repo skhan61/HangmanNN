@@ -1,7 +1,3 @@
-#         # Set the device attribute based on CUDA availability
-#         self.device = torch.device(
-#             "cuda" if torch.cuda.is_available() else "cpu")
-#         self.to(self.device)  # Move the model to the specified device
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # Add this line
@@ -9,74 +5,6 @@ import torch.optim as optim
 from sklearn.metrics import f1_score, precision_score, recall_score
 
 from scr.base_model import BaseModel
-
-# class SimpleLSTM(BaseModel):
-#     def __init__(self, config):
-
-#         super(SimpleLSTM, self).__init__(config)
-#         self.embedding_dim = config.get('embedding_dim', 200)
-#         self.hidden_dim = config.get('hidden_dim', 256)
-#         self.num_layers = config.get('num_layers', 2)
-#         # Defaulting to 26 letters + 1
-#         self.vocab_size = config.get('vocab_size', 27)
-#         self.max_word_length = config.get('max_word_length', 5)
-#         self.input_feature_size = config.get('input_feature_size', 5)
-#         self.use_embedding = config.get('use_embedding', True)
-#         self.lr = config.get('lr', 0.0001)  # Default learning rate
-
-#         # Dropout probability
-#         self.dropout_prob = config.get('dropout_prob', 0.5)  # Can be tuned
-
-#         # Add a dropout layer
-#         self.dropout = nn.Dropout(self.dropout_prob)
-
-#         # # Device handling
-#         # self.device = torch.device("cuda" if torch.cuda.is_available(
-#         # ) and config.get('use_cuda', False) else "cpu")
-
-#         if self.use_embedding:
-#             self.embedding = nn.Embedding(
-#                 self.vocab_size + 1, self.embedding_dim)
-#             rnn_input_size = self.embedding_dim * self.max_word_length + \
-#                 (self.input_feature_size - 1) * self.max_word_length
-#         else:
-#             rnn_input_size = self.input_feature_size * self.max_word_length
-
-#         # LSTM with dropout
-#         self.rnn = nn.LSTM(input_size=rnn_input_size,
-#                            hidden_size=self.hidden_dim,
-#                            num_layers=self.num_layers,
-#                            bidirectional=True,
-#                            batch_first=True,
-#                            dropout=self.dropout_prob if self.num_layers > 1 else 0)  # Apply dropout between LSTM layers if more than one layer
-
-#         self.miss_linear = nn.Linear(
-#             self.vocab_size, config.get('miss_linear_dim', 50))
-
-#         # The input dimension for the linear layer should be the LSTM output dimension (hidden_dim * 2)
-#         # plus the dimension of miss_chars if concatenated.
-#         linear_input_dim = self.hidden_dim * \
-#             2 + config.get('miss_linear_dim', 50)
-
-#         self.linear_out = nn.Linear(linear_input_dim, self.vocab_size)
-
-#         # self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
-
-#                 # Initialize optimizer
-#         optimizer_type = config.get('optimizer_type', 'Adam').lower()
-#         lr = config.get('lr', 0.0001)
-
-#         if optimizer_type == 'adam':
-#             self.optimizer = optim.Adam(self.parameters(), lr=lr)
-#         elif optimizer_type == 'sgd':
-#             momentum = config.get('momentum', 0.9)
-#             self.optimizer = optim.SGD(self.parameters(), lr=lr, momentum=momentum)
-#         # Add more optimizers here as needed
-#         else:
-#             raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
-
-#         # # Move all layers to the correct device
-#         # self.to(self.device)
 
 
 class SimpleLSTM(BaseModel):
@@ -136,12 +64,17 @@ class SimpleLSTM(BaseModel):
     # [rest of the class methods, including forward() and calculate_loss()]
 
     def forward(self, x, x_lens, miss_chars):
+        
+        # x-> batch of state of games
+        # x_len -> original seq len
+        # miss_chars -> batch miss chars
+
         # Move input data to the correct device
         x, x_lens, miss_chars = x.to(
             self.device), x_lens, miss_chars.to(self.device)
 
-        # print("Shape of input x:", x.shape)
-        # print("Shape of input miss_chars:", miss_chars.shape)
+        print("Shape of input x:", x.shape)
+        print("Shape of input miss_chars:", miss_chars.shape)
 
         # Reshaping x to separate features and character indices
         batch_size, max_seq_length, feature_size = x.shape
@@ -171,13 +104,13 @@ class SimpleLSTM(BaseModel):
 
         # Make sure rnn_input is reshaped back to (batch_size, seq_length, features)
         rnn_input = rnn_input.view(batch_size, max_seq_length, -1)
-        # print("Reshaped rnn input:", rnn_input.shape)
+        print("Reshaped rnn input:", rnn_input.shape)
 
         # Packing the sequence
         x_packed = torch.nn.utils.rnn.pack_padded_sequence(
             rnn_input, x_lens, batch_first=True, enforce_sorted=False)
 
-        # print("Shape of packed x:", x_packed.data.shape)
+        print("Shape of packed x:", x_packed.data.shape)
 
         # LSTM processing
         output_packed, (hidden, cell) = self.rnn(x_packed)
@@ -201,10 +134,10 @@ class SimpleLSTM(BaseModel):
         else:
             hidden_combined = hidden[-1]
 
-        # # Debug prints
-        # print("Shape of hidden_combined before unsqueeze:", hidden_combined.shape)
-        # print("Shape of miss_chars_processed before unsqueeze:",
-        #       miss_chars_processed.shape)
+        # Debug prints
+        print("Shape of hidden_combined before unsqueeze:", hidden_combined.shape)
+        print("Shape of miss_chars_processed before unsqueeze:",
+              miss_chars_processed.shape)
 
         # Reshape hidden_combined to match the batch and sequence length of miss_chars_processed
         # hidden_combined: [1, 512] -> [1, 1, 512] -> [1, 6, 512]

@@ -17,6 +17,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def encode_word(word):
+    # print(word)
     return [char_to_idx[char] for char in word]
 
 
@@ -104,35 +105,48 @@ def process_game_sequence(game_states, char_frequency,
     return sequence_features, sequence_missed_chars
 
 
-def process_batch_of_games(batch_of_games, char_frequency,
-                           max_word_length, max_seq_length):
-    # Define batch_size as the number of games in the batch
-    batch_size = len(batch_of_games)
+def process_batch_of_games(guessed_states_batch,
+                           guessed_letters_batch,
+                           char_frequency,
+                           max_word_length,
+                           max_seq_length):
 
-    # Check the number of features using the first state of the first game
+    batch_size = len(guessed_states_batch)
+
+    # Assuming each state is represented similarly in terms of features
+    # This is a sample feature calculation for the first state of the first game in the batch
     sample_features = build_feature_set(
-        batch_of_games[0][0], char_frequency, max_word_length)
+        guessed_states_batch[0][0],
+        char_frequency, max_word_length)
 
-    # Assuming the last dimension holds the features
     num_features = sample_features.shape[-1]
 
     # Initialize tensors for batch features and missed characters
     batch_features = torch.zeros(
-        batch_size, max_seq_length, max_word_length * num_features)
+        batch_size, max_seq_length, max_word_length
+        * num_features)
+
     batch_missed_chars = torch.zeros(
         batch_size, max_seq_length, len(char_to_idx))
 
-    for i, game_states in enumerate(batch_of_games):
+    for i in range(batch_size):
+        # Get the states and letters for the current game in the batch
+        game_states = guessed_states_batch[i]
+        game_letters = guessed_letters_batch[i]
+
+        # Process the sequence for the current game
         sequence_features, sequence_missed_chars = process_game_sequence(
             game_states, char_frequency, max_word_length, max_seq_length)
+
         batch_features[i] = sequence_features
         batch_missed_chars[i] = sequence_missed_chars
 
     return batch_features, batch_missed_chars
 
 
-def build_feature_set(word, char_frequency, max_word_length, ngram_n=3, normalize=True):
-    
+def build_feature_set(word, char_frequency,
+                      max_word_length, ngram_n=3, normalize=True):
+
     word_len = len(word)
 
     # Encode the word
@@ -209,9 +223,11 @@ def pad_and_reshape_labels(labels, model_output_shape):
     return one_hot_labels
 
 
-def process_single_game_state(game_state, char_frequency, max_word_length):
-    # print("Game state received:", game_state)  # Debugging statement
-    current_state, guessed_characters = game_state
+def process_single_game_state(game_state,
+                              char_frequency,
+                              max_word_length):
+    print("Game state received:", game_state)  # Debugging statement
+    current_state, guessed_characters = game_state[0], game_state[1]
 
     # Process this single game state
     sequence_features, sequence_missed_chars = process_game_sequence(
@@ -222,3 +238,11 @@ def process_single_game_state(game_state, char_frequency, max_word_length):
 
 
 gc.collect()
+
+
+def process_single_word_inference(word, char_frequency,
+                                  max_word_length):
+    feature_set = build_feature_set(word, char_frequency, max_word_length)
+    missed_chars = get_missed_characters(word)
+    # Remove batch dimension and return
+    return feature_set.squeeze(0), missed_chars

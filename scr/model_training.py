@@ -15,7 +15,9 @@ from scr.game import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def train_on_data_loader(model, data_loader, device, l1_lambda=0.001, l2_lambda=0.001):
+def train_on_data_loader(model, data_loader,
+                         device, l1_lambda=0.001,
+                         l2_lambda=0.001):
     model.train()
     model.to(device)
     total_loss = 0
@@ -23,17 +25,23 @@ def train_on_data_loader(model, data_loader, device, l1_lambda=0.001, l2_lambda=
     total_batches = 0
 
     optimizer = model.optimizer
-    optimizer_type = type(optimizer).__name__
 
-    for batch_idx, batch in enumerate(data_loader):
-        if batch[0] is None:
-            continue
+    for batch in data_loader:
+        states = batch['guessed_states']
+        guesses = batch['guessed_letters']
+        max_seq_length = batch['max_seq_len']
+        original_seq_lengths = batch['original_seq_lengths']
 
-        game_states_batch, lengths_batch, missed_chars_batch, labels_batch, _ = batch
-        game_states_batch, lengths_batch, missed_chars_batch = game_states_batch.to(
-            device), lengths_batch, missed_chars_batch.to(device)
+        # Preprocessing: Process the batch data
+        batch_features, batch_missed_chars = process_batch_of_games(
+            states, guesses, char_frequency, max_word_length, max_seq_length)
+
+        # Move the tensors to the specified device
+        batch_features = batch_features.to(device)
+        batch_missed_chars = batch_missed_chars.to(device)
 
         outputs = model(game_states_batch, lengths_batch, missed_chars_batch)
+        
         reshaped_labels = pad_and_reshape_labels(
             labels_batch, outputs.shape).to(device)
 
@@ -41,7 +49,7 @@ def train_on_data_loader(model, data_loader, device, l1_lambda=0.001, l2_lambda=
             outputs, reshaped_labels, lengths_batch, missed_chars_batch, 27)
 
         # Normalization of loss components
-        normalized_loss = loss # / (loss + 1e-6)
+        normalized_loss = loss  # / (loss + 1e-6)
         normalized_miss_penalty = 2 * miss_penalty
 
         # # Debug: Print the loss and miss penalty every N batches
@@ -80,61 +88,6 @@ def train_on_data_loader(model, data_loader, device, l1_lambda=0.001, l2_lambda=
     return average_loss, average_miss_penalty
 
 
-# def train_on_data_loader(model, data_loader, device,
-#                          l1_lambda=0.001, l2_lambda=0.001):
-#     model.train()
-#     model.to(device)
-#     total_loss = 0
-#     total_miss_penalty = 0
-#     total_batches = 0
-
-#     optimizer = model.optimizer
-#     optimizer_type = type(optimizer).__name__
-
-#     for batch in data_loader:
-#         if batch[0] is None:
-#             continue
-
-#         game_states_batch, lengths_batch, missed_chars_batch, labels_batch, _ = batch
-#         game_states_batch, lengths_batch, missed_chars_batch \
-#             = game_states_batch.to(device), \
-#             lengths_batch, missed_chars_batch.to(device)
-
-#         outputs = model(game_states_batch, lengths_batch, missed_chars_batch)
-#         reshaped_labels = pad_and_reshape_labels(
-#             labels_batch, outputs.shape).to(device)
-
-#         loss, miss_penalty = model.calculate_loss(
-#             outputs, reshaped_labels, lengths_batch, missed_chars_batch, 27)
-
-#         l1_norm = sum(p.abs().sum() for p in model.parameters())
-#         l2_norm = sum(p.pow(2.0).sum() for p in model.parameters())
-
-#         if optimizer_type == 'Adam':
-#             total_loss_with_reg = loss + l1_lambda * l1_norm
-#         elif optimizer_type == 'SGD':
-#             total_loss_with_reg = loss + l1_lambda * l1_norm + l2_lambda * l2_norm
-#         else:
-#             total_loss_with_reg = loss  # Default case if not Adam or SGD
-
-#         optimizer.zero_grad()
-#         total_loss_with_reg.backward()
-#         optimizer.step()
-
-#         total_loss += loss.item()
-#         total_miss_penalty += miss_penalty.item()
-#         total_batches += 1
-
-#     average_loss = total_loss / total_batches if total_batches > 0 else 0
-#     average_miss_penalty = total_miss_penalty / \
-#         total_batches if total_batches > 0 else 0
-#     return average_loss, average_miss_penalty
-
-
-# Assuming play_game_with_a_word can be parallelized
-# =============================
-
-
 def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
                      device, unique_words_set, max_attempts=6, normalize=True,
                      max_games_per_epoch=1000):
@@ -153,18 +106,31 @@ def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
 
     # New variable for detailed miss penalty tracking
     total_incorrect_guesses = 0
-    miss_penalty_per_game = []
+    miss_penalty_per_game = [] 
 
     with torch.no_grad():
         for batch in data_loader:
-            batch_features, batch_missed_chars, batch_labels, _ = batch
-            batch_features, batch_missed_chars, batch_labels = batch_features.to(
+
+            state, guess = batch[0][0], batch[0][1]
+            word = batch[1]
+            # print(state, guess)
+
+            batch_features, batch_missed_chars = process_batch_of_games([state],
+                        [guess],
+                        char_frequency,
+                        max_word_length,
+                        1)
+
+            batch_features, batch_missed_chars, batch_labels \
+                = batch_features.to(
                 device), batch_missed_chars.to(device), batch_labels.to(device)
 
             sequence_lengths = torch.tensor([batch_features.size(
                 1)] * batch_features.size(0), dtype=torch.long).cpu()
+
             outputs = model(batch_features, sequence_lengths,
                             batch_missed_chars)
+
             reshaped_labels = pad_and_reshape_labels(
                 batch_labels, outputs.shape).to(device)
 
@@ -180,7 +146,9 @@ def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
                 word_length = len(full_word)
 
                 won, final_word, attempts = play_game_with_a_word(
-                    model, full_word, char_frequency, max_word_lengths, device, max_attempts, normalize)
+                    model, full_word, char_frequency, max_word_lengths, device, \
+                        max_attempts, normalize)
+
                 game_word_statistics[full_word] = {
                     "won": won, "final_word": final_word, "attempts": attempts}
                 game_length_statistics[word_length]["games"] += 1
@@ -201,7 +169,9 @@ def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
     avg_char_miss_penalty = char_miss_penalty_total / \
         len(data_loader) if len(data_loader) > 0 else 0
 
-    game_win_rate = game_wins_total / game_total_count if game_total_count > 0 else 0
+    game_win_rate = game_wins_total / game_total_count \
+        if game_total_count > 0 else 0
+
     avg_game_attempts = game_attempts_total / \
         game_total_count if game_total_count > 0 else 0
 
