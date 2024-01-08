@@ -155,7 +155,7 @@ def validate_hangman(model, data_loader, char_frequency, max_word_lengths,
                 game_length_statistics[word_length]["total_attempts"] += attempts
 
                 if won:
-                    game_length_statistics[word_length]["wins"] += 1
+                    game_length_statistics[word_length]["wins" ] += 1
                     game_wins_total += 1
                 else:
                     game_length_statistics[word_length]["losses"] += 1

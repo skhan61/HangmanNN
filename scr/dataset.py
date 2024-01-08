@@ -2,6 +2,7 @@ from collections import defaultdict
 
 import pandas as pd
 import pyarrow.parquet as pq
+import torch
 from torch.utils.data import DataLoader, Dataset
 
 from scr.feature_engineering import *
@@ -65,40 +66,74 @@ def create_validation_samples(game_data_list):
             next_guess = game_data['guessed_letters'][i + 1]
             full_word = game_data['word']
             validation_samples.append(([current_state, next_guess], full_word))
+
     return validation_samples
 
 
-def validation_collate_fn(batch, char_frequency, max_word_length):
-
-    batch_features, batch_missed_chars, batch_labels, batch_full_words = [], [], [], []
+def validation_collate_fn(batch):
+    batch_states, batch_guesses, batch_full_words = [], [], []
 
     for game_state, full_word in batch:
+        state = game_state[0]  # Current state
+        guess = game_state[1]  # Next guess
 
-        print(f'Game states from valid collate: ', game_state)
-        processed_state, missed_chars = process_batch_of_games(game_state,
-                                                               guessed_letters_batch,
-                                                               char_frequency,
-                                                               max_word_length,
-                                                               max_seq_length)
-        batch_features.append(processed_state.unsqueeze(0))
-        batch_missed_chars.append(missed_chars.unsqueeze(0))
-        batch_labels.append(encode_word(full_word).unsqueeze(0))
+        batch_states.append(state)
+        batch_guesses.append(guess)
         batch_full_words.append(full_word)
 
-    return torch.cat(batch_features), torch.cat(batch_missed_chars), \
-        torch.cat(batch_labels), batch_full_words
+    # You can choose to convert lists to tensors if needed, or leave them as lists
+    return batch_states, batch_guesses, batch_full_words
 
 
-def create_val_loader(val_data, char_frequency, max_word_length):
+def create_val_loader(val_data):
     val_samples = [create_validation_samples(
         [game_data]) for game_data in val_data]
     flattened_val_samples = [
         sample for sublist in val_samples for sample in sublist]
 
-    # Define a lambda function to pass the extra arguments
-    def collate_fn_with_args(batch): return validation_collate_fn(
-        batch, char_frequency, max_word_length)
-
     val_loader = DataLoader(flattened_val_samples, batch_size=1,
-                            collate_fn=collate_fn_with_args, shuffle=False)
+                            collate_fn=validation_collate_fn, shuffle=False)
     return val_loader
+
+
+# def validation_collate_fn(batch, char_frequency, max_word_length):
+#     batch_features, batch_missed_chars, batch_labels, batch_full_words = [], [], [], []
+
+#     for game_state, full_word in batch:
+#         print(f'Game states from valid collate: ', game_state)
+#         processed_state, missed_chars = process_batch_of_games(game_state,
+#                                                                char_frequency,
+#                                                                max_word_length,
+#                                                                max_seq_length=1)
+
+#         batch_features.append(processed_state.unsqueeze(0))
+#         batch_missed_chars.append(missed_chars.unsqueeze(0))
+
+#         encoded_word = encode_word(full_word)
+#         # Ensure encoded_word is a Tensor, not a list
+#         if not isinstance(encoded_word, torch.Tensor):
+#             # Add appropriate dtype and device if needed
+#             encoded_word = torch.tensor(encoded_word)
+
+#         batch_labels.append(encoded_word.unsqueeze(0))
+#         batch_full_words.append(full_word)
+
+#     return torch.cat(batch_features), torch.cat(batch_missed_chars), \
+#         torch.cat(batch_labels), batch_full_words
+
+# # The rest of your create
+
+
+# def create_val_loader(val_data, char_frequency, max_word_length):
+#     val_samples = [create_validation_samples(
+#         [game_data]) for game_data in val_data]
+#     flattened_val_samples = [
+#         sample for sublist in val_samples for sample in sublist]
+
+#     # Define a lambda function to pass the extra arguments
+#     def collate_fn_with_args(batch): return validation_collate_fn(
+#         batch, char_frequency, max_word_length)
+
+#     val_loader = DataLoader(flattened_val_samples, batch_size=1,
+#                             collate_fn=collate_fn_with_args, shuffle=False)
+#     return val_loader

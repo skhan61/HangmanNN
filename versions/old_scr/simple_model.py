@@ -38,8 +38,10 @@ class SimpleLSTM(BaseModel):
 
         self.miss_linear = nn.Linear(
             self.vocab_size, config.get('miss_linear_dim', 50))
+       
         linear_input_dim = self.hidden_dim * \
             2 + config.get('miss_linear_dim', 50)
+        
         self.linear_out = nn.Linear(linear_input_dim, self.vocab_size)
         self.dropout = nn.Dropout(self.dropout_prob)
 
@@ -78,7 +80,9 @@ class SimpleLSTM(BaseModel):
 
         # Reshaping x to separate features and character indices
         batch_size, max_seq_length, feature_size = x.shape
+
         num_features_per_word = feature_size // self.max_word_length
+        
         reshaped_x = x.view(batch_size, max_seq_length,
                             self.max_word_length, -1)
 
@@ -95,12 +99,14 @@ class SimpleLSTM(BaseModel):
         if self.use_embedding:
             embedded_chars = self.embedding(
                 char_indices_flattened.to(self.device))
+            
             # Apply dropout after embedding
             embedded_chars = self.dropout(embedded_chars)
             rnn_input = torch.cat(
                 (embedded_chars, other_features_reshaped), dim=-1)
         else:
             rnn_input = other_features_reshaped
+
 
         # Make sure rnn_input is reshaped back to (batch_size, seq_length, features)
         rnn_input = rnn_input.view(batch_size, max_seq_length, -1)
