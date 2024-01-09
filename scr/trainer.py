@@ -23,6 +23,10 @@ class HangmanModel(pl.LightningModule):
 
         # self.save_hyperparameters()  # This line saves the hyperparameters
 
+        self.predicted_guesses = []
+        self.actual_guesses = []
+
+
     def forward(self, fets, original_seq_lens, missed_chars):
         return self.model(fets, original_seq_lens, missed_chars)
 
@@ -60,52 +64,38 @@ class HangmanModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        state, actual_guess, full_word = batch
+            state, actual_guess, full_word = batch
+            guessed_letters = []
 
-        # Initialize or update the guessed_letters list
-        guessed_letters = []
+            predicted_guess = guess_fqn(self.model, state[0],
+                                        self.char_frequency, self.max_word_length, guessed_letters)
 
-        # Call the guess function with the state tensor on the correct device
-        predicted_guess = guess_fqn(self.model, state[0],
-                                    self.char_frequency,
-                                    self.max_word_length,
-                                    guessed_letters)
+            fets, missed_chars = process_batch_of_games(
+                [state], self.char_frequency, self.max_word_length, max_seq_length=1)
+            fets, missed_chars = fets.to(self.device), missed_chars.to(self.device)
+            seq_lens = torch.tensor([fets.size(1)], dtype=torch.long, device=self.device)
 
-        # Process the state for model input, ensuring it's on the correct device
-        fets, missed_chars = process_batch_of_games(
-            [state], self.char_frequency, self.max_word_length, max_seq_length=1)
-        fets, missed_chars = fets.to(self.device), missed_chars.to(self.device)
+            outputs = self(fets, seq_lens, missed_chars)
+            encoded_guess = pad_and_reshape_labels([actual_guess], max_seq_length=1).to(self.device)
 
-        seq_lens = torch.tensor(
-            [fets.size(1)], dtype=torch.long, device=self.device)
+            loss, miss_penalty = self.calculate_loss(outputs, encoded_guess, seq_lens, missed_chars)
 
-        # Forward pass through the model
-        outputs = self(fets, seq_lens, missed_chars)
+            self.predicted_guesses.append(predicted_guess)
+            self.actual_guesses.append(actual_guess)
 
-        # Prepare the label tensor
-        encoded_guess = pad_and_reshape_labels(
-            [actual_guess], max_seq_length=1)
-        encoded_guess = encoded_guess.to(self.device)
+                    # Calculate and log metrics every 32 states
+            if len(self.predicted_guesses) >= 32:
+                accuracy = accuracy_score(self.actual_guesses, self.predicted_guesses)
+                f1 = f1_score(self.actual_guesses, self.predicted_guesses, average='weighted')
 
-        # Calculate loss
-        loss, miss_penalty = self.calculate_loss(
-            outputs, encoded_guess, seq_lens, missed_chars)
+                # Directly specify batch size when logging
+                self.log('val_accuracy', accuracy, on_step=False, on_epoch=True, prog_bar=True, batch_size=32)
+                self.log('val_f1_score', f1, on_step=False, on_epoch=True, prog_bar=True, batch_size=32)
 
-        # Calculate metrics
-        correct_guess = predicted_guess == actual_guess
-        accuracy = accuracy_score([actual_guess], [predicted_guess])
-        f1 = f1_score([actual_guess], [predicted_guess], average='weighted')
+                self.predicted_guesses = []
+                self.actual_guesses = []
 
-        # Log metrics with batch size specified
-        self.log('val_accuracy', accuracy, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=1)
-        self.log('val_f1_score', f1, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=1)
-        self.log('val_loss', loss, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=1)
-
-        return {'loss': loss, 'miss_penalty': miss_penalty, 'accuracy': accuracy, 'f1_score': f1}
-    #     return {'loss': loss, 'miss_penalty': miss_penalty, 'accuracy': accuracy, 'f1_score': f1}
+            return {'loss': loss, 'miss_penalty': miss_penalty}
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
