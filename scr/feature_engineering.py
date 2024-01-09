@@ -171,6 +171,19 @@ def process_game_sequence(game_states, char_frequency,
 def process_batch_of_games(guessed_states_batch, char_frequency,
                            max_word_length, max_seq_length):
 
+
+    # # def process_batch_of_games(guessed_states_batch, char_frequency, max_word_length, max_seq_length):
+    # batch_size = len(guessed_states_batch)  # Number of games in the batch
+    # print(f"guessed_states_batch: {guessed_states_batch}")  # Debugging
+    # print(f"First state in batch: {guessed_states_batch[0]}")  # Debugging
+
+    # first_state_features = build_feature_set(guessed_states_batch[0], char_frequency, max_word_length)
+    # print(f"Features of first state: {first_state_features}")  # Debugging
+    # num_features = first_state_features.shape[-1]  # Determine number of features
+
+    # # Rest of the function code...
+
+
     batch_size = len(guessed_states_batch)  # Number of games in the batch
     num_features = build_feature_set(
         guessed_states_batch[0][0], char_frequency, max_word_length).shape[-1]  # Determine number of features

@@ -38,4 +38,6 @@ class SimpleLSTM(nn.Module):
         # Apply the linear layer to the concatenated output
         out = self.linear(concatenated)
 
+        # out = torch.sigmoid(out)
+
         return out
