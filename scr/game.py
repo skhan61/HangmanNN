@@ -6,6 +6,7 @@ from itertools import combinations
 
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 # process_single_word, get_missed_characters, char_to_idx, idx_to_char
 from scr.feature_engineering import *
@@ -39,7 +40,8 @@ def play_game_with_a_word(model, word, char_frequency,
 
     while game_status == "ongoing" and attempts_remaining > 0:
 
-        guessed_char = guess(model, masked_word, char_frequency, max_word_length, guessed_letters)
+        guessed_char = guess(model, masked_word, char_frequency,
+                             max_word_length, guessed_letters)
 
         # Add to the list of guessed letters
         guessed_letters.append(guessed_char)
@@ -63,35 +65,78 @@ def play_game_with_a_word(model, word, char_frequency,
     return masked_word == word, \
         masked_word, max_attempts - attempts_remaining
 
+
+def play_games_and_calculate_stats(model, words_list, char_frequency, max_word_length, max_attempts=6):
+    stats = {}
+    total_wins = 0
+    total_games = 0
+    total_attempts_used = 0
+
+    # For length-wise details
+    length_wise_stats = {}
+
+    # Initialize progress bar
+    with tqdm(total=len(words_list), desc="Processing words", unit="word") as pbar:
+        for word in words_list:
+            word = word.lower()  # Ensure the word is in lowercase
+            word_length = len(word)
+
+            # Initialize length-wise stats
+            if word_length not in length_wise_stats:
+                length_wise_stats[word_length] = {
+                    "total_games": 0, "wins": 0, "total_attempts_used": 0}
+
+            # Initialize stats for this word
+            if word not in stats:
+                stats[word] = {"total_games": 0,
+                               "wins": 0, "total_attempts_used": 0}
+
+                # Play game with the word
+                win, masked_word, attempts_used = play_game_with_a_word(
+                    model, word, char_frequency, max_word_length, max_attempts
+                )
+
+                # Update stats for this word and length-wise stats
+                stats[word]["total_games"] += 1
+                stats[word]["total_attempts_used"] += attempts_used
+                length_wise_stats[word_length]["total_games"] += 1
+                length_wise_stats[word_length]["total_attempts_used"] += attempts_used
+
+                if win:
+                    stats[word]["wins"] += 1
+                    length_wise_stats[word_length]["wins"] += 1
+                    total_wins += 1
+
+                # Update progress bar
+                pbar.update(1)
+
+            total_games += 1
+            total_attempts_used += attempts_used
+
+    # Calculate win rate and average attempts used for each word
+    for word, data in stats.items():
+        data["win_rate"] = (data["wins"] / data["total_games"]) * 100
+        data["average_attempts_used"] = data["total_attempts_used"] / \
+            data["total_games"]
+
+    # Calculate length-wise stats
+    for length, data in length_wise_stats.items():
+        data["win_rate"] = (data["wins"] / data["total_games"]) * 100
+        data["average_attempts_used"] = data["total_attempts_used"] / \
+            data["total_games"]
+
+    overall_win_rate = (total_wins / total_games) * 100
+    overall_avg_attempts = total_attempts_used / total_games
+
+    return {
+        "stats": stats,
+        "overall_win_rate": overall_win_rate,
+        "overall_avg_attempts": overall_avg_attempts,
+        "length_wise_stats": length_wise_stats
+    }
+
+
 #### Dont change above this ######
-
-# import random
-
-# def generate_masked_word_variants(word, max_variants, max_masks):
-#     word_length = len(word)
-#     unique_chars = list(set(word))  # Convert set to list
-#     masked_versions = set()
-
-#     count = 0
-#     while count < max_variants:
-#         num_chars_to_reveal = random.randint(1, min(max_masks, \
-#             len(unique_chars)))
-#         chars_to_reveal = random.sample(unique_chars, num_chars_to_reveal)
-#         masked_word = ''.join(c if c in chars_to_reveal else '_' \
-#             for c in word)
-
-#         if masked_word not in masked_versions:
-#             yield masked_word  # Yield each unique masked word variant
-#             masked_versions.add(masked_word)
-#             count += 1
-
-# def process_word(word, mask_prob=0.9, max_variants=10):
-#     word_length = len(word)
-#     max_variants = min(word_length, max_variants)
-#     max_masks = max(1, int(len(set(word)) * mask_prob))
-
-#     return ['_' * word_length] + list(generate_masked_word_variants(word, \
-#         max_variants - 1, max_masks))
 
 
 def optimized_masked_variants(word, max_variants, max_masks):

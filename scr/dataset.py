@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 
 import pandas as pd
@@ -9,14 +10,37 @@ from scr.feature_engineering import *
 
 
 class HangmanDataset(Dataset):
-    def __init__(self, parquet_file):
-        self.dataframe = pd.read_parquet(parquet_file)
+    def __init__(self, parquet_files):
+        self.parquet_files = parquet_files
+        self.lengths = [pd.read_parquet(f).shape[0]
+                        for f in self.parquet_files]
+        self.cumulative_lengths = self._compute_cumulative_lengths(
+            self.lengths)
+
+    def _compute_cumulative_lengths(self, lengths):
+        cum_lengths = [0]
+        total = 0
+        for length in lengths:
+            total += length
+            cum_lengths.append(total)
+        return cum_lengths
+
+    def _get_file_and_local_idx(self, idx):
+        for file_idx, cum_length in enumerate(self.cumulative_lengths):
+            if idx < cum_length:
+                local_idx = idx - self.cumulative_lengths[file_idx - 1]
+                return self.parquet_files[file_idx - 1], local_idx
+        raise IndexError("Index out of bounds")
 
     def __len__(self):
-        return len(self.dataframe)
+        return self.cumulative_lengths[-1]
 
     def __getitem__(self, idx):
-        row = self.dataframe.iloc[idx]
+        file_path, local_idx = self._get_file_and_local_idx(idx)
+        df = pd.read_parquet(file_path)
+        row = df.iloc[local_idx]
+
+        # Process the row and return the necessary data
         return {
             'game_id': row['game_id'],
             'word': row['word'],
@@ -30,7 +54,6 @@ class HangmanDataset(Dataset):
             'word_length': row['word_length'],
             'won': row['won'] == 'True'
         }
-
 
 def custom_collate_fn(batch):
     # Since lengths are the same for states and letters
@@ -137,3 +160,42 @@ def create_val_loader(val_data):
 #     val_loader = DataLoader(flattened_val_samples, batch_size=1,
 #                             collate_fn=collate_fn_with_args, shuffle=False)
 #     return val_loader
+
+# class HangmanDataset(Dataset):
+#     def __init__(self, parquet_file, chunk_size=10000):
+#         self.parquet_file = parquet_file
+#         self.chunk_size = chunk_size
+#         self.total_rows = pd.read_parquet(parquet_file, columns=['game_id']).shape[0]
+#         self.current_chunk = None
+#         self.chunk_start_idx = 0
+
+#     def _load_chunk(self, idx):
+#         chunk_idx = idx // self.chunk_size
+#         if self.current_chunk is None or self.chunk_start_idx != chunk_idx * self.chunk_size:
+#             self.chunk_start_idx = chunk_idx * self.chunk_size
+#             self.current_chunk = pd.read_parquet(
+#                 self.parquet_file,
+#                 skiprows=range(1, self.chunk_start_idx + 1),
+#                 nrows=self.chunk_size
+#             )
+
+#     def __len__(self):
+#         return self.total_rows
+
+#     def __getitem__(self, idx):
+#         if idx < self.chunk_start_idx or idx >= self.chunk_start_idx + self.chunk_size:
+#             self._load_chunk(idx)
+#         row = self.current_chunk.iloc[idx - self.chunk_start_idx]
+#         return {
+#             'game_id': row['game_id'],
+#             'word': row['word'],
+#             'initial_state': row['initial_state'].split(','),
+#             'final_state': row['final_state'],
+#             'guessed_states': row['guessed_states'].split(','),
+#             'guessed_letters': row['guessed_letters'].split(','),
+#             'game_state': row['game_state'],
+#             'difficulty': row['difficulty'],
+#             'outcome': row['outcome'],
+#             'word_length': row['word_length'],
+#             'won': row['won'] == 'True'
+#         }
