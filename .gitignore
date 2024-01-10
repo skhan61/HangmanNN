@@ -16,6 +16,7 @@
 !*.sh
 !*.yml
 !*.html
+!*.md
 
 # Include specific directories
 !/old/
