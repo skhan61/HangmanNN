@@ -206,7 +206,7 @@ def process_batch_of_games(guessed_states_batch, char_frequency,
         batch_missed_chars[i] = sequence_missed_chars
 
     return batch_features, batch_missed_chars  # Return tensors for the entire batch
-
+ 
 
 def pad_and_reshape_labels(guesses, max_seq_length,
                            num_classes=len(char_to_idx)):

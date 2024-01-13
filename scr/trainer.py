@@ -10,27 +10,43 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
 from scr.feature_engineering import *
+from scr.game import *
 from scr.guess import guess as guess_fqn
+from scr.utils import *
 
 # # Example scheduler - adjust parameters as needed
 # scheduler = ReduceLROnPlateau(
 #     optimizer, mode='min', factor=0.1, patience=2, verbose=True)
 
 
+# class HangmanModel(pl.LightningModule):
+#     def __init__(self, lstm_model, learning_rate, char_frequency,
+#                  max_word_length, l1_factor=0.01, l2_factor=0.01):
+#         super().__init__()
+#         self.model = lstm_model
+#         self.learning_rate = learning_rate
+#         self.char_frequency = char_frequency
+#         self.max_word_length = max_word_length
+
+#         # Regularization factors
+#         self.l1_factor = l1_factor
+#         self.l2_factor = l2_factor
+
 class HangmanModel(pl.LightningModule):
     def __init__(self, lstm_model, learning_rate, char_frequency,
-                 max_word_length, l1_factor=0.01, l2_factor=0.01):
+                 max_word_length, l1_factor=0.01, l2_factor=0.01, test_words=None):
+
         super().__init__()
         self.model = lstm_model
         self.learning_rate = learning_rate
         self.char_frequency = char_frequency
         self.max_word_length = max_word_length
-
-        # Regularization factors
         self.l1_factor = l1_factor
         self.l2_factor = l2_factor
+        self.test_words = test_words
 
         # Predicted and actual guesses for metrics calculation
+
         self.predicted_guesses = []
         self.actual_guesses = []
 
@@ -60,11 +76,13 @@ class HangmanModel(pl.LightningModule):
             batch_features, original_seq_lengths_tensor, batch_missed_chars)
 
         # loss, miss_penalty = self.calculate_loss(outputs,
-        #                                          encoded_guess, original_seq_lengths_tensor, batch_missed_chars)
+        #     encoded_guess, original_seq_lengths_tensor, batch_missed_chars)
 
         # Calculate loss with regularization
-        loss, miss_penalty = self.calculate_loss(outputs, encoded_guess, original_seq_lengths_tensor,
-                                                 batch_missed_chars, self.l1_factor, self.l2_factor)
+        loss, miss_penalty = self.calculate_loss(outputs, encoded_guess,
+                                                 original_seq_lengths_tensor,
+                                                 batch_missed_chars, self.l1_factor,
+                                                 self.l2_factor)
 
         # If you know the batch size, explicitly provide it when logging
         # Or however you can determine the batch size
@@ -106,14 +124,53 @@ class HangmanModel(pl.LightningModule):
         # Determine the batch size for logging purposes
         # or any other way to determine the batch size
         batch_size = len(states)
-
-        # Logging the validation loss and miss penalty with batch_size
-        self.log('val_loss', loss, on_step=True, on_epoch=True,
-                 prog_bar=True, batch_size=batch_size)
+        # Call your custom evaluation function and capture its return
+        # Log validation loss and miss penalty
+        # Logging the validation loss and miss penalty with explicit batch size
+        self.log('val_loss', loss, on_step=True,
+                 on_epoch=True, prog_bar=True, batch_size=1)
         self.log('val_miss_penalty', miss_penalty, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=batch_size)
+                 on_epoch=True, prog_bar=True, batch_size=1)
 
-        return {'val_loss': loss, 'val_miss_penalty': miss_penalty}
+        # Call your custom evaluation function and capture its return
+        eval_metrics = self.evaluate_and_log(self.trainer, self)
+        # print("eval_metrics:", eval_metrics)
+
+        # Example usage with your dictionary:
+        flattened_metrics = flatten_dict(eval_metrics)
+
+
+        for key, value in flattened_metrics.items():
+            self.log(key, value, on_step=False, on_epoch=True,
+                     prog_bar=True, batch_size=1)
+
+        return {'val_loss': loss, 'val_miss_penalty': miss_penalty, **eval_metrics}
+
+    def evaluate_and_log(self, trainer, pl_module):
+        # print("Evaluating performance...")
+        pl_module.eval()
+
+        result = play_games_and_calculate_stats(pl_module, self.test_words,
+                                                self.char_frequency, self.max_word_length)
+        
+        current_win_rate = result['overall_win_rate']
+
+        # # Log metrics
+        # trainer.logger.log_metrics(
+        #     {'test_win_rate': current_win_rate}, step=trainer.current_epoch)
+
+        # print(
+        #     f"\n===== Epoch {trainer.current_epoch} - Test Performance: =====")
+        # print(
+        #     f"Overall Win Rate: {current_win_rate}%, Overall Average Attempts: {result['overall_avg_attempts']}")
+        # for length, data in result["length_wise_stats"].items():
+        #     print(
+        #         f"Length {length}: Win Rate: {data['win_rate']}%, Average Attempts: {data['average_attempts_used']}")
+
+        pl_module.train()
+
+        # Return the metrics
+        return {'test_win_rate': current_win_rate} # , 'other_metrics': result}
 
     # def configure_optimizers(self):
     #     optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -133,7 +190,8 @@ class HangmanModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         scheduler = {
-            'scheduler': ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True),
+            'scheduler': ReduceLROnPlateau(optimizer, mode='min',
+                                           factor=0.1, patience=2, verbose=True),
             'monitor': 'val_loss'  # Name of the metric to monitor
         }
         return [optimizer], [scheduler]
@@ -160,6 +218,7 @@ class HangmanModel(pl.LightningModule):
         # print(f"weights shape: ", weights.shape)
 
         loss_func = nn.BCEWithLogitsLoss(weight=weights, reduction='none')
+
         loss = loss_func(outputs, labels)
 
         # Ensure seq_lens_mask is on the same device as model_out

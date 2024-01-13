@@ -8,9 +8,17 @@ from torch.utils.data import DataLoader, Dataset
 
 from scr.feature_engineering import *
 
+# class HangmanDataset(Dataset):
+#     def __init__(self, parquet_files):
+#         self.parquet_files = parquet_files
+
 
 class HangmanDataset(Dataset):
     def __init__(self, parquet_files):
+        # Ensure parquet_files is a list, even if it's a single path
+        if not isinstance(parquet_files, list):
+            parquet_files = [parquet_files]
+
         self.parquet_files = parquet_files
         self.lengths = [pd.read_parquet(f).shape[0]
                         for f in self.parquet_files]
@@ -54,6 +62,7 @@ class HangmanDataset(Dataset):
             'word_length': row['word_length'],
             'won': row['won'] == 'True'
         }
+
 
 def custom_collate_fn(batch):
     # Since lengths are the same for states and letters

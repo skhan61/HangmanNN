@@ -164,7 +164,7 @@ def process_word(word, mask_prob=0.9, max_variants=10):
     word_length = len(word)
     max_masks = max(1, int(len(set(word)) * mask_prob))
     return ['_' * word_length] + list(optimized_masked_variants(word,
-                                                                max_variants - 1, max_masks))
+                                    max_variants - 1, max_masks))
 
 
 def process_word_for_six_states(word):
