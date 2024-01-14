@@ -1,86 +1,88 @@
 import gc
 import random
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 import torch
 from torch.utils.data import Sampler
 
 MAX_EXTRA_WEIGHT = 100  # Example value, adjust as needed
-TARGET_WIN_RATE = 0.5   # This is an example value for scaling the weight
-MAX_INDICES = 10000     # Example value, adjust as needed
+TARGET_WIN_RATE = 50   # This is an example value for scaling the weight
+MAX_INDICES = 32     # Example value, adjust as needed
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, performance_metrics, max_word_length=10,
+    def __init__(self, data_source, performance_metrics, max_word_length=29,
                  target_win_rate=TARGET_WIN_RATE, max_weight=MAX_EXTRA_WEIGHT):
 
         self.data_source = data_source
-        self.performance_metrics = performance_metrics
-        self.target_win_rate = target_win_rate
+        self.performance_metrics = performance_metrics or {}
+        self.max_word_length = max_word_length
+        self.target_win_rate = target_win_rate / 100.0
         self.max_weight = max_weight
-        self.max_word_length = max_word_length  # Add this line
-        self.indices = self.generate_indices()
+        self.weights = self.precompute_weights()
 
-    def generate_indices(self):
-        indices = []
-        for idx, (_, _, additional_info) in enumerate(self.data_source):
-            word_length = len(additional_info['word'])
-            difficulty = additional_info['difficulty']
-            outcome = additional_info['outcome']
+    def precompute_weights(self):
+        # Find all unique word lengths in the dataset
+        all_word_lengths = set(
+            int(game_info['word_length']) for game_info in self.data_source)
 
-            # Access performance metrics
-            performance = self.performance_metrics.get(
-                word_length, {}).get(difficulty, {}).get(outcome, {})
-            win_rate = performance.get('win_rate', 1)
-            max_attempts = performance.get('max_attempts', 10)
+        # Calculate raw weights for all word lengths
+        raw_weights = {}
+        for word_length in all_word_lengths:
+            raw_weights[word_length] = self.calculate_weight(
+                word_length,
+                self.performance_metrics.get(
+                    word_length, {}).get('win_rate', 50) / 100,
+                self.performance_metrics.get(word_length, {}).get(
+                    'average_attempts_used', 6)
+            )
 
-            # # Debug prints
-            # print(
-            #     f"Word Length: {word_length}, Difficulty: {difficulty}, Outcome: {outcome}")
-            # print(f"Performance Metrics: {performance}")
-            # print(f"Win Rate: {win_rate}, Max Attempts: {max_attempts}")
+        # Normalize weights
+        total_weight_sum = sum(raw_weights.values())
+        normalized_weights = {
+            word_length: weight / total_weight_sum for word_length,
+            weight in raw_weights.items()}
+        return normalized_weights
 
-            # Calculate weight
-            # Adjust the weight calculation
-            weight = self.calculate_weight(
-                word_length, difficulty, outcome, win_rate, max_attempts)
-
-            indices.extend([idx] * weight)
-
-        random.shuffle(indices)
-        return indices[:MAX_INDICES]
+    def calculate_weight(self, word_length, win_rate, attempts):
+        length_weight = (word_length / self.max_word_length) * 2
+        win_rate_deviation = abs(self.target_win_rate - win_rate)
+        win_rate_weight = 1 + (win_rate_deviation * 2)
+        attempts_weight = 1 if attempts <= 6 else (10 - attempts) / 4
+        total_weight = length_weight * win_rate_weight * attempts_weight
+        return max(min(int(total_weight), self.max_weight), 1)
 
     def __iter__(self):
-        # Returns an iterator over the generated indices
-        return iter(self.indices)
+        n_samples = min(MAX_INDICES, len(self.data_source))
+
+        # Calculating raw probabilities for each index
+        raw_probabilities = [self.weights.get(int(self.data_source[idx]['word_length']), 0)
+                             for idx in range(len(self.data_source))]
+
+        # Normalizing the probabilities
+        total_prob_sum = sum(raw_probabilities)
+        normalized_probabilities = [
+            prob / total_prob_sum for prob in raw_probabilities]
+
+        # Check the sum of normalized probabilities
+        if not np.isclose(sum(normalized_probabilities), 1):
+            raise ValueError(
+                "Sum of normalized probabilities does not equal 1")
+
+        counts = np.random.multinomial(n_samples, normalized_probabilities)
+        sampled_indices = np.where(counts > 0)[0]
+
+        for index in sampled_indices:
+            for _ in range(counts[index]):
+                yield index
 
     def __len__(self):
-        # Returns the length of the generated indices
-        return len(self.indices)
-
-    def calculate_weight(self, word_length, difficulty, outcome, win_rate, max_attempts):
-        # Factor in word length
-        # Assuming max_word_length is defined
-        length_weight = word_length / self.max_word_length
-
-        # Differentiate between win and lose outcomes
-        if outcome == 'win':
-            # Higher weight for less frequent wins
-            outcome_weight = (1 - win_rate) * 2
-        else:  # 'lose'
-            outcome_weight = win_rate * 2  # Higher weight for more frequent losses
-
-        # Combine factors for total weight
-        total_weight = length_weight * outcome_weight * (max_attempts / 10)
-        return min(int(total_weight), self.max_weight)
+        return min(MAX_INDICES, len(self.data_source))
 
 
-# Example usage
-# performance_metrics = { ... }
-# sampler = PerformanceBasedSampler(dataset, performance_metrics, target_win_rate=0.6, max_weight=120)
-
-
-# dont change below
+# # dont change below
 
 def update_sampler(sampler, new_performance_metrics):
     sampler.performance_metrics = new_performance_metrics

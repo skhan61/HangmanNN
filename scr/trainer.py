@@ -14,23 +14,6 @@ from scr.game import *
 from scr.guess import guess as guess_fqn
 from scr.utils import *
 
-# # Example scheduler - adjust parameters as needed
-# scheduler = ReduceLROnPlateau(
-#     optimizer, mode='min', factor=0.1, patience=2, verbose=True)
-
-
-# class HangmanModel(pl.LightningModule):
-#     def __init__(self, lstm_model, learning_rate, char_frequency,
-#                  max_word_length, l1_factor=0.01, l2_factor=0.01):
-#         super().__init__()
-#         self.model = lstm_model
-#         self.learning_rate = learning_rate
-#         self.char_frequency = char_frequency
-#         self.max_word_length = max_word_length
-
-#         # Regularization factors
-#         self.l1_factor = l1_factor
-#         self.l2_factor = l2_factor
 
 class HangmanModel(pl.LightningModule):
     def __init__(self, lstm_model, learning_rate, char_frequency,
@@ -41,6 +24,7 @@ class HangmanModel(pl.LightningModule):
         self.learning_rate = learning_rate
         self.char_frequency = char_frequency
         self.max_word_length = max_word_length
+
         self.l1_factor = l1_factor
         self.l2_factor = l2_factor
         self.test_words = test_words
@@ -49,6 +33,8 @@ class HangmanModel(pl.LightningModule):
 
         self.predicted_guesses = []
         self.actual_guesses = []
+
+        self.last_eval_metrics = None
 
     def forward(self, fets, original_seq_lens, missed_chars):
         return self.model(fets, original_seq_lens, missed_chars)
@@ -60,10 +46,13 @@ class HangmanModel(pl.LightningModule):
         original_seq_lengths = batch['original_seq_lengths']
 
         batch_features, batch_missed_chars = process_batch_of_games(
-            states, self.char_frequency, self.max_word_length, max_seq_length)
+            states, self.char_frequency,
+            self.max_word_length,
+            max_seq_length)
 
         original_seq_lengths_tensor = torch.tensor(original_seq_lengths,
-                                                   dtype=torch.long, device=self.device)
+                                                   dtype=torch.long,
+                                                   device=self.device)
 
         encoded_guess = pad_and_reshape_labels(guesses, max_seq_length)
         encoded_guess = encoded_guess.to(self.device)  # Move to correct device
@@ -81,7 +70,8 @@ class HangmanModel(pl.LightningModule):
         # Calculate loss with regularization
         loss, miss_penalty = self.calculate_loss(outputs, encoded_guess,
                                                  original_seq_lengths_tensor,
-                                                 batch_missed_chars, self.l1_factor,
+                                                 batch_missed_chars,
+                                                 self.l1_factor,
                                                  self.l2_factor)
 
         # If you know the batch size, explicitly provide it when logging
@@ -91,6 +81,12 @@ class HangmanModel(pl.LightningModule):
                  prog_bar=True, batch_size=batch_size)
 
         return loss
+
+    def on_train_epoch_end(self, unused=None):
+        # print(f"from on_train_epoch_end: ", self.current_epoch)
+        if self.current_epoch > 0:
+            # Update to use custom sampler after first epoch
+            self.trainer.datamodule.use_performance_based_sampling(True)
 
     def validation_step(self, batch, batch_idx):
         states = batch['guessed_states']
@@ -103,7 +99,8 @@ class HangmanModel(pl.LightningModule):
             states, self.char_frequency, self.max_word_length, max_seq_length)
 
         original_seq_lengths_tensor = torch.tensor(original_seq_lengths,
-                                                   dtype=torch.long, device=self.device)
+                                                   dtype=torch.long,
+                                                   device=self.device)
 
         encoded_guess = pad_and_reshape_labels(guesses, max_seq_length)
         encoded_guess = encoded_guess.to(self.device)  # Move to correct device
@@ -124,6 +121,7 @@ class HangmanModel(pl.LightningModule):
         # Determine the batch size for logging purposes
         # or any other way to determine the batch size
         batch_size = len(states)
+
         # Call your custom evaluation function and capture its return
         # Log validation loss and miss penalty
         # Logging the validation loss and miss penalty with explicit batch size
@@ -132,72 +130,60 @@ class HangmanModel(pl.LightningModule):
         self.log('val_miss_penalty', miss_penalty, on_step=True,
                  on_epoch=True, prog_bar=True, batch_size=1)
 
-        # Call your custom evaluation function and capture its return
-        eval_metrics = self.evaluate_and_log(self.trainer, self)
-        # print("eval_metrics:", eval_metrics)
+        # return {'val_loss': loss,
+        #         'val_miss_penalty': miss_penalty}
 
-        # Example usage with your dictionary:
-        flattened_metrics = flatten_dict(eval_metrics)
+    def on_validation_epoch_end(self):
+        eval_metrics = self.evaluate_and_log()
 
+        self.last_eval_metrics = eval_metrics  # Store the metrics
 
-        for key, value in flattened_metrics.items():
-            self.log(key, value, on_step=False, on_epoch=True,
-                     prog_bar=True, batch_size=1)
+        # Log the overall win rate and average attempts
+        self.log('test_win_rate', eval_metrics['win_rate'],
+                 on_step=False, on_epoch=True, prog_bar=True)
+        self.log('overall_avg_attempts',
+                 eval_metrics['attempts'], on_step=False, on_epoch=True, prog_bar=True)
 
-        return {'val_loss': loss, 'val_miss_penalty': miss_penalty, **eval_metrics}
+        # print("Overall Win Rate:", eval_metrics['win_rate'])
+        # print("Overall Average Attempts:", eval_metrics['attempts'])
 
-    def evaluate_and_log(self, trainer, pl_module):
-        # print("Evaluating performance...")
-        pl_module.eval()
+        # return eval_metrics
 
-        result = play_games_and_calculate_stats(pl_module, self.test_words,
-                                                self.char_frequency, self.max_word_length)
-        
-        current_win_rate = result['overall_win_rate']
+    def evaluate_and_log(self):
+        # Ensure the model is in evaluation mode
+        self.eval()
 
-        # # Log metrics
-        # trainer.logger.log_metrics(
-        #     {'test_win_rate': current_win_rate}, step=trainer.current_epoch)
+        # Perform evaluation and gather statistics
+        result = play_games_and_calculate_stats(self, self.test_words,
+                                                self.char_frequency,
+                                                self.max_word_length)
 
-        # print(
-        #     f"\n===== Epoch {trainer.current_epoch} - Test Performance: =====")
-        # print(
-        #     f"Overall Win Rate: {current_win_rate}%, Overall Average Attempts: {result['overall_avg_attempts']}")
-        # for length, data in result["length_wise_stats"].items():
-        #     print(
-        #         f"Length {length}: Win Rate: {data['win_rate']}%, Average Attempts: {data['average_attempts_used']}")
+        # Extracting necessary statistics
+        stats = result['stats']
+        win_rate = result['overall_win_rate']
+        attempts = result['overall_avg_attempts']
+        length_wise_stats = result['length_wise_stats']
 
-        pl_module.train()
+        # Switch back to training mode
+        self.train()
 
-        # Return the metrics
-        return {'test_win_rate': current_win_rate} # , 'other_metrics': result}
+        # Return the collected statistics for further use if needed
+        return {'stats': stats, 'win_rate': win_rate,
+                'attempts': attempts, 'length_wise_stats': length_wise_stats}
 
-    # def configure_optimizers(self):
-    #     optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
-    #     # Define the learning rate scheduler
-    #     scheduler = {
-    #         'scheduler': lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1),
-    #         'name': 'learning_rate',
-    #         'interval': 'epoch',
-    #         'frequency': 1
-    #     }
-
-    #     return [optimizer], [scheduler]
-
-    #     # return optimizer
-
-    # Add the scheduler to the LightningModule configuration
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         scheduler = {
             'scheduler': ReduceLROnPlateau(optimizer, mode='min',
                                            factor=0.1, patience=2, verbose=True),
-            'monitor': 'val_loss'  # Name of the metric to monitor
+
+            'monitor': 'val_miss_penalty'  # Name of the metric to monitor
         }
         return [optimizer], [scheduler]
 
     def calculate_loss(self, outputs, labels, input_lens,
                        miss_chars, l1_factor=0.0, l2_factor=0.0):
+
         # # print(f"model out: ", model_out.shape)
         # # outputs = torch.sigmoid(model_out)
         # outputs = model_out
@@ -246,3 +232,4 @@ class HangmanModel(pl.LightningModule):
         # Final loss
         total_loss = loss + miss_penalty + l1_loss + l2_loss
         return total_loss, miss_penalty
+    

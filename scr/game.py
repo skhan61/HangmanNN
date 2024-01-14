@@ -66,7 +66,8 @@ def play_game_with_a_word(model, word, char_frequency,
         masked_word, max_attempts - attempts_remaining
 
 
-def play_games_and_calculate_stats(model, words_list, char_frequency, max_word_length, max_attempts=6):
+def play_games_and_calculate_stats(model, words_list, char_frequency,
+                                   max_word_length, max_attempts=6):
     stats = {}
     total_wins = 0
     total_games = 0
@@ -164,7 +165,7 @@ def process_word(word, mask_prob=0.9, max_variants=10):
     word_length = len(word)
     max_masks = max(1, int(len(set(word)) * mask_prob))
     return ['_' * word_length] + list(optimized_masked_variants(word,
-                                    max_variants - 1, max_masks))
+                                                                max_variants - 1, max_masks))
 
 
 def process_word_for_six_states(word):

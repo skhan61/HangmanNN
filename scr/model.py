@@ -49,9 +49,12 @@ class SimpleLSTM(nn.Module):
 
 
 class HangmanNN(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, output_dim, num_layers,
-                 missed_char_dim, num_embeddings, num_additional_features, dropout_rate=0.5):
-        super(SimpleLSTM, self).__init__()
+    def __init__(self, embedding_dim, hidden_dim,
+                 output_dim, num_layers,
+                 missed_char_dim, num_embeddings,
+                 num_additional_features, dropout_rate=0.5):
+
+        super(HangmanNN, self).__init__()
 
         self.embedding = nn.Embedding(
             num_embeddings, embedding_dim)  # Embedding layer

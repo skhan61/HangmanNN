@@ -90,42 +90,55 @@ def custom_collate_fn(batch):
     }
 
 
-def create_validation_samples(game_data_list):
-    validation_samples = []
-    for game_data in game_data_list:
-        for i in range(len(game_data['guessed_states']) - 1):
-            current_state = game_data['guessed_states'][i]
-            next_guess = game_data['guessed_letters'][i + 1]
-            full_word = game_data['word']
-            validation_samples.append(([current_state, next_guess], full_word))
+class SimpleWordDataset(Dataset):
+    """ Dataset for individual words """
 
-    return validation_samples
+    def __init__(self, word_list):
+        self.word_list = word_list
 
+    def __len__(self):
+        return len(self.word_list)
 
-def validation_collate_fn(batch):
-    batch_states, batch_guesses, batch_full_words = [], [], []
-
-    for game_state, full_word in batch:
-        state = game_state[0]  # Current state
-        guess = game_state[1]  # Next guess
-
-        batch_states.append(state)
-        batch_guesses.append(guess)
-        batch_full_words.append(full_word)
-
-    # You can choose to convert lists to tensors if needed, or leave them as lists
-    return batch_states, batch_guesses, batch_full_words
+    def __getitem__(self, idx):
+        return self.word_list[idx]
 
 
-def create_val_loader(val_data):
-    val_samples = [create_validation_samples(
-        [game_data]) for game_data in val_data]
-    flattened_val_samples = [
-        sample for sublist in val_samples for sample in sublist]
+# def create_validation_samples(game_data_list):
+#     validation_samples = []
+#     for game_data in game_data_list:
+#         for i in range(len(game_data['guessed_states']) - 1):
+#             current_state = game_data['guessed_states'][i]
+#             next_guess = game_data['guessed_letters'][i + 1]
+#             full_word = game_data['word']
+#             validation_samples.append(([current_state, next_guess], full_word))
 
-    val_loader = DataLoader(flattened_val_samples, batch_size=1,
-                            collate_fn=validation_collate_fn, shuffle=False)
-    return val_loader
+#     return validation_samples
+
+
+# def validation_collate_fn(batch):
+#     batch_states, batch_guesses, batch_full_words = [], [], []
+
+#     for game_state, full_word in batch:
+#         state = game_state[0]  # Current state
+#         guess = game_state[1]  # Next guess
+
+#         batch_states.append(state)
+#         batch_guesses.append(guess)
+#         batch_full_words.append(full_word)
+
+#     # You can choose to convert lists to tensors if needed, or leave them as lists
+#     return batch_states, batch_guesses, batch_full_words
+
+
+# def create_val_loader(val_data):
+#     val_samples = [create_validation_samples(
+#         [game_data]) for game_data in val_data]
+#     flattened_val_samples = [
+#         sample for sublist in val_samples for sample in sublist]
+
+#     val_loader = DataLoader(flattened_val_samples, batch_size=1,
+#                             collate_fn=validation_collate_fn, shuffle=False)
+#     return val_loader
 
 
 # def validation_collate_fn(batch, char_frequency, max_word_length):
