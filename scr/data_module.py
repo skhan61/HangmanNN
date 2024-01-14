@@ -55,20 +55,3 @@ class HangmanDataModule(LightningDataModule):
 
     def use_performance_based_sampling(self, use_sampler: bool):
         self.use_custom_sampler = use_sampler
-
-    # def test_dataloader(self):
-    #     # Load and sample test words
-    #     try:
-    #         # Use the correctly named attribute
-    #         testing_word_list = read_words(self.test_words_file_path)
-    #         sampled_test_words = stratified_sample_by_length_and_uniqueness(
-    #             testing_word_list, self.num_word_sample)
-    #         print(
-    #             f"Sampled {len(sampled_test_words)} unique words for testing.")
-    #     except FileNotFoundError:
-    #         print(f"File not found: {self.test_words_file_path}")
-    #         return None
-
-    #     # Create a simple dataset for test words
-    #     test_dataset = SimpleWordDataset(sampled_test_words)
-    #     return DataLoader(test_dataset, batch_size=self.num_word_sample)
