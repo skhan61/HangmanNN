@@ -1,5 +1,5 @@
 import os
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -48,7 +48,6 @@ class HangmanDataset(Dataset):
         df = pd.read_parquet(file_path)
         row = df.iloc[local_idx]
 
-        # Process the row and return the necessary data
         return {
             'game_id': row['game_id'],
             'word': row['word'],
@@ -64,23 +63,103 @@ class HangmanDataset(Dataset):
         }
 
 
+# class HangmanDataset_(Dataset):
+#     def __init__(self, parquet_files, cache_size=3):
+#         if not isinstance(parquet_files, list):
+#             parquet_files = [parquet_files]
+#         self.parquet_files = parquet_files
+
+#         # Efficiently get the number of rows in each Parquet file
+#         self.lengths = [pq.read_metadata(f).num_rows for f in parquet_files]
+#         self.cumulative_lengths = self._compute_cumulative_lengths(
+#             self.lengths)
+#         self.cache = OrderedDict()  # LRU cache
+#         self.cache_size = cache_size
+
+#     def _compute_cumulative_lengths(self, lengths):
+#         cum_lengths = [0]
+#         total = 0
+#         for length in lengths:
+#             total += length
+#             cum_lengths.append(total)
+#         return cum_lengths
+
+#     def _get_file_and_local_idx(self, idx):
+#         for file_idx, cum_length in enumerate(self.cumulative_lengths):
+#             if idx < cum_length:
+#                 local_idx = idx - self.cumulative_lengths[file_idx - 1]
+#                 return self.parquet_files[file_idx - 1], local_idx
+#         raise IndexError("Index out of bounds")
+
+#     def __len__(self):
+#         return self.cumulative_lengths[-1]
+
+#     def __getitem__(self, idx):
+#         file_path, local_idx = self._get_file_and_local_idx(idx)
+#         if file_path not in self.cache:
+#             if len(self.cache) >= self.cache_size:
+#                 self.cache.popitem(last=False)  # Remove oldest item
+#             self.cache[file_path] = pd.read_parquet(file_path)
+
+#         df = self.cache[file_path]
+#         row = df.iloc[local_idx]
+
+#         # row = self.dataframes[file_path].iloc[local_idx]
+
+#         # Process the row and return the necessary data
+#         return {
+#             'game_id': row['game_id'],
+#             'word': row['word'],
+#             'initial_state': row['initial_state'].split(','),
+#             'final_state': row['final_state'],
+#             'guessed_states': row['guessed_states'].split(','),
+#             'guessed_letters': row['guessed_letters'].split(','),
+#             'game_state': row['game_state'],
+#             'difficulty': row['difficulty'],
+#             'outcome': row['outcome'],
+#             'word_length': row['word_length'],
+#             'won': row['won'] == 'True'
+#         }
+
+
+# def custom_collate_fn(batch):
+#     # Since lengths are the same for states and letters
+#     max_seq_len = max(len(item['guessed_states']) for item in batch)
+#     padded_states = []
+#     padded_letters = []
+#     original_seq_lengths = []
+
+#     for item in batch:
+#         # Assuming both states and letters have the same length
+#         original_seq_len = len(item['guessed_states'])
+#         original_seq_lengths.append(original_seq_len)
+
+#         states_padding = [''] * (max_seq_len - original_seq_len)
+#         letters_padding = [''] * (max_seq_len - original_seq_len)
+
+#         padded_states.append(item['guessed_states'] + states_padding)
+#         padded_letters.append(item['guessed_letters'] + letters_padding)
+
+#     return {
+#         'guessed_states': padded_states,
+#         'guessed_letters': padded_letters,
+#         'max_seq_len': max_seq_len,
+#         'original_seq_lengths': original_seq_lengths
+#     }
+
+
 def custom_collate_fn(batch):
-    # Since lengths are the same for states and letters
     max_seq_len = max(len(item['guessed_states']) for item in batch)
-    padded_states = []
-    padded_letters = []
-    original_seq_lengths = []
 
-    for item in batch:
-        # Assuming both states and letters have the same length
-        original_seq_len = len(item['guessed_states'])
-        original_seq_lengths.append(original_seq_len)
+    # Preallocate arrays with maximum sequence length
+    padded_states = [[''] * max_seq_len for _ in batch]
+    padded_letters = [[''] * max_seq_len for _ in batch]
+    original_seq_lengths = [len(item['guessed_states']) for item in batch]
 
-        states_padding = [''] * (max_seq_len - original_seq_len)
-        letters_padding = [''] * (max_seq_len - original_seq_len)
-
-        padded_states.append(item['guessed_states'] + states_padding)
-        padded_letters.append(item['guessed_letters'] + letters_padding)
+    for i, item in enumerate(batch):
+        seq_len = original_seq_lengths[i]
+        padded_states[i][:seq_len] = item['guessed_states']
+        padded_letters[i][:seq_len] = item['guessed_letters']
 
     return {
         'guessed_states': padded_states,

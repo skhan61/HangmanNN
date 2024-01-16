@@ -171,7 +171,6 @@ def process_game_sequence(game_states, char_frequency,
 def process_batch_of_games(guessed_states_batch, char_frequency,
                            max_word_length, max_seq_length):
 
-
     # # def process_batch_of_games(guessed_states_batch, char_frequency, max_word_length, max_seq_length):
     # batch_size = len(guessed_states_batch)  # Number of games in the batch
     # print(f"guessed_states_batch: {guessed_states_batch}")  # Debugging
@@ -182,7 +181,6 @@ def process_batch_of_games(guessed_states_batch, char_frequency,
     # num_features = first_state_features.shape[-1]  # Determine number of features
 
     # # Rest of the function code...
-
 
     batch_size = len(guessed_states_batch)  # Number of games in the batch
     num_features = build_feature_set(
@@ -206,7 +204,7 @@ def process_batch_of_games(guessed_states_batch, char_frequency,
         batch_missed_chars[i] = sequence_missed_chars
 
     return batch_features, batch_missed_chars  # Return tensors for the entire batch
- 
+
 
 def pad_and_reshape_labels(guesses, max_seq_length,
                            num_classes=len(char_to_idx)):

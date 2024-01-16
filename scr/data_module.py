@@ -22,28 +22,29 @@ class HangmanDataModule(LightningDataModule):
         self.use_custom_sampler = use_custom_sampler
 
     def train_dataloader(self):
-        # Determine the sampler to use based on the epoch
-        if self.use_custom_sampler and hasattr(self.trainer.model, 'last_eval_metrics'):
+        # # Determine the sampler to use based on the epoch
+        # if self.use_custom_sampler and hasattr(self.trainer.model, 'last_eval_metrics'):
+        #     # print(f"From Performence Sampler...")
+        #     # metrics = self.trainer.model.last_eval_metrics
+        #     sampler = PerformanceBasedSampler(
+        #         self.train_dataset, self.trainer.model.last_eval_metrics)
+        # else:
+        #     # print(f"From RandomSampler...")
+        #     sampler = RandomSampler(self.train_dataset)
 
-            # print(f"From Performence Sampler...")
+        # # Using BatchSampler
+        # batch_sampler = BatchSampler(
+        #     sampler, batch_size=self.batch_size, drop_last=False)
 
-            metrics = self.trainer.model.last_eval_metrics
-            sampler = PerformanceBasedSampler(self.train_dataset, metrics)
-        else:
-            # print(f"From RandomSampler...")
-            sampler = RandomSampler(self.train_dataset)
+        # return DataLoader(self.train_dataset, batch_sampler=batch_sampler,
+        #                   collate_fn=self.collate_fn, num_workers=os.cpu_count()
+        #                   or 4, prefetch_factor=2,
+        #                   pin_memory=True)
 
-        # Using BatchSampler
-        batch_sampler = BatchSampler(
-            sampler, batch_size=self.batch_size, drop_last=False)
-
-        return DataLoader(self.train_dataset, batch_sampler=batch_sampler,
-                          collate_fn=self.collate_fn,
-                          num_workers=os.cpu_count() or 1, prefetch_factor=2)
-
-    # def on_epoch_end(self):
-    #     # Update the current epoch at the end of each epoch
-    #     self.current_epoch += 1
+        return DataLoader(self.train_dataset, collate_fn=self.collate_fn,
+                          num_workers=os.cpu_count()
+                          or 4, prefetch_factor=2,
+                          pin_memory=True)
 
     def val_dataloader(self):
         return DataLoader(

@@ -2,7 +2,6 @@ from pytorch_lightning.callbacks import Callback, EarlyStopping
 
 from scr.game import *
 
-
 # class LossLoggingCallback(Callback):
 #     def on_train_epoch_end(self, trainer, pl_module):
 #         metrics = trainer.callback_metrics
@@ -29,7 +28,7 @@ from scr.game import *
 early_stop_callback = EarlyStopping(
     monitor='test_win_rate',
     min_delta=0.00,
-    patience=3,
+    patience=5,
     verbose=True,
     mode='max'  # Maximize the win rate
 )

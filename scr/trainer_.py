@@ -16,11 +16,13 @@ from scr.utils import *
 
 
 class HangmanModel(pl.LightningModule):
-    def __init__(self, lstm_model, learning_rate, char_frequency,
+    def __init__(self, encoder, decoder, learning_rate, char_frequency,
                  max_word_length, l1_factor=0.01, l2_factor=0.01, test_words=None):
 
         super().__init__()
-        self.model = lstm_model
+        self.encoder = encoder
+        self.decoder = decoder
+
         self.learning_rate = learning_rate
         self.char_frequency = char_frequency
         self.max_word_length = max_word_length
@@ -34,10 +36,12 @@ class HangmanModel(pl.LightningModule):
         self.predicted_guesses = []
         self.actual_guesses = []
 
-        self.last_eval_metrics = None
+        self.last_eval_metrics = {}
 
     def forward(self, fets, original_seq_lens, missed_chars):
-        return self.model(fets, original_seq_lens, missed_chars)
+        encoded_fets = self.encoder(fets, original_seq_lens, missed_chars)
+        outputs = self.decoder(encoded_fets, original_seq_lens, missed_chars)
+        return outputs
 
     def training_step(self, batch, batch_idx):
         states = batch['guessed_states']
@@ -60,6 +64,8 @@ class HangmanModel(pl.LightningModule):
         # Move batch_missed_chars to the correct device
         batch_features = batch_features.to(self.device)
         batch_missed_chars = batch_missed_chars.to(self.device)
+
+        # encoder_batch_fets = self.encoder(batch_features)  # feature encoder
 
         outputs = self(
             batch_features, original_seq_lengths_tensor, batch_missed_chars)
@@ -126,9 +132,9 @@ class HangmanModel(pl.LightningModule):
         # Log validation loss and miss penalty
         # Logging the validation loss and miss penalty with explicit batch size
         self.log('val_loss', loss, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=1)
+                 on_epoch=True, prog_bar=True, batch_size=batch_size)
         self.log('val_miss_penalty', miss_penalty, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=1)
+                 on_epoch=True, prog_bar=True, batch_size=batch_size)
 
         # return {'val_loss': loss,
         #         'val_miss_penalty': miss_penalty}
@@ -219,6 +225,7 @@ class HangmanModel(pl.LightningModule):
 
         # L1 Regularization
         l1_reg = torch.tensor(0., requires_grad=True, device=self.device)
+
         for param in self.parameters():
             l1_reg = l1_reg + torch.norm(param, 1)  # Non-in-place addition
         l1_loss = l1_factor * l1_reg
@@ -231,4 +238,5 @@ class HangmanModel(pl.LightningModule):
 
         # Final loss
         total_loss = loss + miss_penalty + l1_loss + l2_loss
+
         return total_loss, miss_penalty
