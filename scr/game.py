@@ -6,7 +6,9 @@ from itertools import combinations
 
 import torch
 import torch.nn as nn
-from tqdm import tqdm
+from IPython.display import clear_output, display
+# from tqdm import tqdm
+from tqdm.notebook import tqdm
 
 # process_single_word, get_missed_characters, char_to_idx, idx_to_char
 from scr.feature_engineering import *
@@ -76,8 +78,11 @@ def play_games_and_calculate_stats(model, words_list, char_frequency,
     # For length-wise details
     length_wise_stats = {}
 
+    # # Initialize progress bar
+    # with tqdm(total=len(words_list), desc="Processing words", unit="word") as pbar:
     # Initialize progress bar
-    with tqdm(total=len(words_list), desc="Processing words", unit="word") as pbar:
+    # with tqdm(total=len(words_list)) as pbar:
+    with tqdm(total=len(words_list), desc="Processing words", unit="word", leave=False) as pbar:
         for word in words_list:
             word = word.lower()  # Ensure the word is in lowercase
             word_length = len(word)
@@ -108,11 +113,17 @@ def play_games_and_calculate_stats(model, words_list, char_frequency,
                     length_wise_stats[word_length]["wins"] += 1
                     total_wins += 1
 
-                # Update progress bar
-                pbar.update(1)
+                # # Update progress bar
+                # pbar.update(1)
 
             total_games += 1
             total_attempts_used += attempts_used
+
+            # # # Update progress bar
+            pbar.update(1)
+
+    # pbar.close()
+    # clear_output(wait=True)
 
     # Calculate win rate and average attempts used for each word
     for word, data in stats.items():

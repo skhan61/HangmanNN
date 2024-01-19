@@ -50,7 +50,7 @@ def test_encoder():
     batch_size = 10
     max_seq_length = 10
     max_word_length = 29
-    num_embeddings = 100
+    num_embeddings = 28
     embedding_dim = 50
     num_features = 5
 

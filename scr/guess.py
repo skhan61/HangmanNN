@@ -65,7 +65,7 @@ def guess_character(model, masked_word, char_frequency,
     with torch.no_grad():
         output = model(fets, seq_lens, missed_chars)
 
-    # print(output)
+    # print(f"Output shape: {output.shape}")
 
     last_char_position = seq_lens.item() - 1
     probabilities = torch.sigmoid(output[0, last_char_position, :])

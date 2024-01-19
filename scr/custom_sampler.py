@@ -7,82 +7,69 @@ import numpy as np
 import torch
 from torch.utils.data import Sampler
 
-MAX_EXTRA_WEIGHT = 100  # Example value, adjust as needed
-TARGET_WIN_RATE = 50   # This is an example value for scaling the weight
-MAX_INDICES = 32     # Example value, adjust as needed
+from scr.dataset import *
+
+
+class WordLengthSampler(Sampler):
+    def __init__(self, dataset, target_word_lengths, num_samples=None):
+        self.dataset = dataset
+        self.target_word_lengths = target_word_lengths
+        self.num_samples = num_samples or sum(len(dataset.word_length_index[wl])
+                                              for wl in target_word_lengths)
+
+    def __iter__(self):
+        for _ in range(self.num_samples):
+            # Randomly select a word length from the target lengths
+            word_length = random.choice(self.target_word_lengths)
+            # Randomly select a game record index for that word length
+            idx = random.choice(
+                range(len(self.dataset.word_length_index[word_length])))
+            yield word_length, idx
+
+# # Example: create a sampler that targets word lengths 5 and 10
+# target_word_lengths = [5, 10]
+
+# sampler = WordLengthSampler(dataset, target_word_lengths)
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, data_source, performance_metrics, max_word_length=29,
-                 target_win_rate=TARGET_WIN_RATE, max_weight=MAX_EXTRA_WEIGHT):
+    def __init__(self, dataset, performance_metrics,
+                 threshold_win_rate, num_samples=None):
+        self.dataset = dataset
+        self.performance_metrics = performance_metrics
+        self.threshold_win_rate = threshold_win_rate
+        self.target_word_lengths = self._select_target_lengths()
+        self.num_samples = num_samples or sum(len(self.dataset.word_length_index[wl])
+                                              for wl in self.target_word_lengths)
 
-        self.data_source = data_source
-        self.performance_metrics = performance_metrics or {}
-        self.max_word_length = max_word_length
-        self.target_win_rate = target_win_rate / 100.0
-        self.max_weight = max_weight
-        self.weights = self.precompute_weights()
-
-    def precompute_weights(self):
-        # Find all unique word lengths in the dataset
-        all_word_lengths = set(
-            int(game_info['word_length']) for game_info in self.data_source)
-
-        # Calculate raw weights for all word lengths
-        raw_weights = {}
-        for word_length in all_word_lengths:
-            raw_weights[word_length] = self.calculate_weight(
-                word_length,
-                self.performance_metrics.get(
-                    word_length, {}).get('win_rate', 50) / 100,
-                self.performance_metrics.get(word_length, {}).get(
-                    'average_attempts_used', 6)
-            )
-
-        # Normalize weights
-        total_weight_sum = sum(raw_weights.values())
-        normalized_weights = {
-            word_length: weight / total_weight_sum for word_length,
-            weight in raw_weights.items()}
-        return normalized_weights
-
-    def calculate_weight(self, word_length, win_rate, attempts):
-        length_weight = (word_length / self.max_word_length) * 2
-        win_rate_deviation = abs(self.target_win_rate - win_rate)
-        win_rate_weight = 1 + (win_rate_deviation * 2)
-        attempts_weight = 1 if attempts <= 6 else (10 - attempts) / 4
-        total_weight = length_weight * win_rate_weight * attempts_weight
-        return max(min(int(total_weight), self.max_weight), 1)
+    def _select_target_lengths(self):
+        # Select word lengths with win rates below the threshold
+        return [length for length, metrics in self.performance_metrics.items()
+                if metrics['win_rate'] < self.threshold_win_rate]
 
     def __iter__(self):
-        n_samples = min(MAX_INDICES, len(self.data_source))
+        sample_indices = []
+        for word_length in self.target_word_lengths:
+            indices = [(word_length, idx) for idx in
+                       range(len(self.dataset.word_length_index[word_length]))]
+            sample_indices.extend(indices)
 
-        # Calculating raw probabilities for each index
-        raw_probabilities = [self.weights.get(int(self.data_source[idx]['word_length']), 0)
-                             for idx in range(len(self.data_source))]
+        # Shuffle the sample indices to ensure diversity
+        random.shuffle(sample_indices)
 
-        # Normalizing the probabilities
-        total_prob_sum = sum(raw_probabilities)
-        normalized_probabilities = [
-            prob / total_prob_sum for prob in raw_probabilities]
-
-        # Check the sum of normalized probabilities
-        if not np.isclose(sum(normalized_probabilities), 1):
-            raise ValueError(
-                "Sum of normalized probabilities does not equal 1")
-
-        counts = np.random.multinomial(n_samples, normalized_probabilities)
-        sampled_indices = np.where(counts > 0)[0]
-
-        for index in sampled_indices:
-            for _ in range(counts[index]):
-                yield index
+        return iter(sample_indices[:self.num_samples])
 
     def __len__(self):
-        return min(MAX_INDICES, len(self.data_source))
+        # Return the total number of samples to be drawn by this sampler
+        return min(self.num_samples, sum(len(self.dataset.word_length_index[wl])
+                                         for wl in self.target_word_lengths))
 
+    def update_target_word_lengths(self, new_performance_metrics):
+        self.performance_metrics = new_performance_metrics
+        self.target_word_lengths = self._select_target_lengths()
 
 # # dont change below
+
 
 def update_sampler(sampler, new_performance_metrics):
     sampler.performance_metrics = new_performance_metrics
