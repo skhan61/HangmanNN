@@ -16,50 +16,46 @@ from scr.utils import *
 
 
 class HangmanDataModule(LightningDataModule):
-    def __init__(self, train_dataset, val_dataset,
-                 batch_size, collate_fn,
-                 performance_metrics=None,
-                 threshold_win_rate=50):
-
+    def __init__(self, train_dataset, val_dataset, batch_size, collate_fn):
         super().__init__()
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.batch_size = batch_size
         self.collate_fn = collate_fn
-        self.performance_metrics = performance_metrics
-        self.threshold_win_rate = threshold_win_rate
-
-    def create_sampler(self, performance_metrics=None):
-        if performance_metrics:
-            return PerformanceBasedSampler(
-                self.train_dataset, performance_metrics,
-                self.threshold_win_rate)
-        else:
-            return RandomSampler(self.train_dataset)
+        self.performance_metrics = None  # Initialize as None
 
     def train_dataloader(self):
-        # Create a new dataloader every time this method is called
-        # This ensures that the latest performance metrics are used
-        sampler = self.create_sampler(self.performance_metrics)
-        return DataLoader(
-            self.train_dataset,
-            batch_size=self.batch_size,
-            sampler=sampler,
-            collate_fn=self.collate_fn,
-            num_workers=os.cpu_count() or 4,
-            prefetch_factor=2,
-            pin_memory=True
-        )
+        # Initialize sampler based on the current performance metrics
+        if self.performance_metrics:
+            # print('Performence sampler kicked...')
+            sampler = PerformanceBasedSampler(
+                self.train_dataset, self.performance_metrics, self.batch_size)
+        else:
+            sampler = None
+
+        # Check if the dataset is empty
+        if len(self.train_dataset) == 0:
+            raise ValueError("Training dataset is empty.")
+
+        # sampler = RandomSampler(self.train_dataset)
+
+        return DataLoader(self.train_dataset, batch_size=self.batch_size,
+                          sampler=sampler,
+                          collate_fn=self.collate_fn,
+                          num_workers=os.cpu_count() or 4, prefetch_factor=2,
+                          pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(
-            self.val_dataset,
-            batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
-            num_workers=os.cpu_count() or 1
-        )
+        # Check if the validation dataset is empty
+        if len(self.val_dataset) == 0:
+            raise ValueError("Validation dataset is empty.")
 
-    def update_train_dataloader(self, new_performance_metrics):
-        # Update the performance metrics
-        self.performance_metrics = new_performance_metrics
-        # The train dataloader will be recreated with the updated metrics on the next call
+        return DataLoader(self.val_dataset, batch_size=self.batch_size,
+                          collate_fn=self.collate_fn, num_workers=os.cpu_count() or 1)
+
+    def update_performance_metrics(self, new_metrics):
+        # Update performance metrics
+        self.performance_metrics = new_metrics
+
+        # The actual reinitialization of the dataloader will be handled
+        # by the Trainer's `reload_dataloaders_every_n_epochs` setting.

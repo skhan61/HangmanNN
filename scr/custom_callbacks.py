@@ -7,7 +7,7 @@ from scr.game import *
 early_stop_callback = EarlyStopping(
     monitor='test_win_rate',
     min_delta=0.00,
-    patience=20,
+    patience=200,
     verbose=True,
     mode='max'  # Maximize the win rate
 )

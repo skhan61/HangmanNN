@@ -1,14 +1,19 @@
 import collections
 import pickle
 import random
+from collections import defaultdict
 from collections.abc import MutableMapping
 from datetime import datetime
 from pathlib import Path
 from typing import List
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
+
+from scr.dataset import *
 
 
 def save_dataset_pickle(dataset, file_name='data/train_dataset.pkl'):
@@ -106,3 +111,84 @@ def flatten_dict(d, parent_key='', sep='_'):
         else:
             items.append((new_key, v))
     return dict(items)
+
+
+def plot_hangman_stats(data):
+    # Prepare data for plotting
+    word_lengths = []
+    win_rates = []
+    average_attempts = []
+    total_games = []
+
+    for length, stats in data.items():
+        word_lengths.append(length)
+        win_rates.append(stats['win_rate'])
+        average_attempts.append(stats['average_attempts_used'])
+        total_games.append(stats['total_games'])
+
+    # Plotting
+    plt.figure(figsize=(18, 6))
+
+    # Win Rate by Word Length
+    plt.subplot(1, 3, 1)
+    sns.barplot(x=word_lengths, y=win_rates, palette="coolwarm")
+    plt.title("Win Rate by Word Length", fontsize=16)
+    plt.xlabel("Word Length", fontsize=14)
+    plt.ylabel("Win Rate (%)", fontsize=14)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+
+    # Average Attempts Used by Word Length
+    plt.subplot(1, 3, 2)
+    sns.barplot(x=word_lengths, y=average_attempts, palette="viridis")
+    plt.title("Average Attempts by Word Length", fontsize=16)
+    plt.xlabel("Word Length", fontsize=14)
+    plt.ylabel("Average Attempts", fontsize=14)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+
+    # Total Games per Word Length
+    plt.subplot(1, 3, 3)
+    sns.barplot(x=word_lengths, y=total_games, palette="magma")
+    plt.title("Total Games per Word Length", fontsize=16)
+    plt.xlabel("Word Length", fontsize=14)
+    plt.ylabel("Total Games", fontsize=14)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def split_hangman_dataset(dataset, train_ratio=0.8):
+    # Initialize dictionaries to hold train and validation indices for each class
+    train_indices = defaultdict(list)
+    valid_indices = defaultdict(list)
+
+    # Iterate through each class and split its indices
+    for class_key, indices in dataset.pair_index.items():
+        total_samples = len(indices)
+        shuffled_indices = random.sample(indices, total_samples)
+        split_idx = int(total_samples * train_ratio)
+
+        # Split indices into training and validation sets
+        train_indices[class_key] = shuffled_indices[:split_idx]
+        valid_indices[class_key] = shuffled_indices[split_idx:]
+
+    # Create new dataset instances for training and validation
+    train_dataset = HangmanDataset(dataset.parquet_files)
+    valid_dataset = HangmanDataset(dataset.parquet_files)
+
+    # Assign the split indices to the new datasets
+    train_dataset.pair_index = train_indices
+    valid_dataset.pair_index = valid_indices
+
+    # Update total_length attribute for both datasets
+    train_dataset.total_length = sum(len(indices)
+                                     for indices in train_indices.values())
+    valid_dataset.total_length = sum(len(indices)
+                                     for indices in valid_indices.values())
+
+    return train_dataset, valid_dataset
+
+
