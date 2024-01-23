@@ -38,21 +38,28 @@ class HangmanDataset(Dataset):
 
     def rebuild_pair_index(self, target_pairs):
         new_pair_index = defaultdict(list)
-        new_word_length_index = defaultdict(list)  # New word length index
+        new_word_length_index = defaultdict(list)
+
+        target_difficulty_outcomes = {
+            pair for pair in target_pairs if len(pair) == 2}
+        target_word_lengths = {pair[0]
+                               for pair in target_pairs if len(pair) == 1}
 
         for file_idx, file in enumerate(self.parquet_files):
             df = pd.read_parquet(file)
             for local_idx, row in df.iterrows():
                 difficulty_outcome_key = (row['difficulty'], row['outcome'])
                 word_length_key = row['word_length']
-                if difficulty_outcome_key in target_pairs:
+
+                if difficulty_outcome_key in target_difficulty_outcomes \
+                        or word_length_key in target_word_lengths:
                     new_pair_index[difficulty_outcome_key].append(
                         (file_idx, local_idx))
                     new_word_length_index[word_length_key].append(
                         (file_idx, local_idx))
 
         self.pair_index = new_pair_index
-        self.word_length_index = new_word_length_index  # Update the word length index
+        self.word_length_index = new_word_length_index
         self.total_length = sum(len(indices)
                                 for indices in new_pair_index.values())
 

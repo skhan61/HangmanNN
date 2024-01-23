@@ -54,6 +54,9 @@ from scr.dataset import *
 class PerformanceBasedSampler(Sampler):
     def __init__(self, dataset, performance_metrics, batch_size, score_threshold=0):
         self.dataset = dataset
+
+        # print(self.dataset.word_length_index)
+
         self.performance_metrics = performance_metrics
 
         self.batch_size = batch_size
@@ -68,42 +71,54 @@ class PerformanceBasedSampler(Sampler):
         # print(self.performance_metrics.keys())
 
         # Iterate through performance metrics and apply the selection criteria
-        for metric_name, metric_value in self.performance_metrics.items():
-            if metric_name.startswith('win_rate_') and metric_value <= 50:
-                # Extract word length from metric name
-                word_length = int(metric_name.split('_')[-1])
-                # Check the corresponding average attempts metric
-                avg_attempts_metric_name = f'avg_attempts_{word_length}'
-                avg_attempts = self.performance_metrics.get(
-                    avg_attempts_metric_name, 0)
+        for word_length, metrics in self.performance_metrics.items():
+            if isinstance(metrics, dict):
+                win_rate = metrics.get('win_rate', 0)
+                avg_attempts = metrics.get('average_attempts_used', 0)
 
-                # Apply the criteria for average attempts
-                if avg_attempts >= 4:
-                    target_pairs.append((word_length,))
+                # Apply the criteria for win rate and average attempts
+                if win_rate <= 20: #and avg_attempts >= 4:
+                    # Add the word length as a target pair
+                    target_pairs.append((int(word_length),))
 
-        # Limit the number of target pairs based on batch size
+        # # Limit the number of target pairs based on batch size
+        # print(target_pairs)
         target_pairs = target_pairs[:self.batch_size]
         return target_pairs
 
     def __iter__(self):
+        # print(f"in iter...")
+        # print(self.target_pairs)
+
+        # print(f"{self.dataset.word_length_index}")
         # Rebuild pair index if target pairs have changed
         if self.target_pairs != self.last_used_pairs:
+            # print(f"rebuilding")
+            # print(f"printing target pairs {self.target_pairs}")
             self.last_used_pairs = self.target_pairs
             self.dataset.rebuild_pair_index(self.target_pairs)
+            # print(f"{self.dataset.word_length_index}")
 
         valid_indices = []
         for pair in self.target_pairs:
+            # print(f"pair {pair}")
             if len(pair) == 2:  # For (difficulty, outcome) pairs
                 difficulty, outcome = pair
                 if (difficulty, outcome) in self.dataset.pair_index:
                     valid_indices.extend([(difficulty, outcome, file_idx, local_idx)
-                                          for file_idx, local_idx in self.dataset.pair_index[(difficulty, outcome)]])
+                                          for file_idx, local_idx in
+                                          self.dataset.pair_index[(difficulty, outcome)]])
+
             elif len(pair) == 1:  # For (word_length,) pairs
                 word_length = pair[0]
+                # print(f"=== {word_length}")
+                # print()
+                # print(self.dataset.word_length_index)
+                # print()
                 if word_length in self.dataset.word_length_index:
                     valid_indices.extend(
                         [(word_length,) for _ in self.dataset.word_length_index[word_length]])
-
+        # print(valid_indices)
         return iter(valid_indices)
 
     def __len__(self):
@@ -115,13 +130,30 @@ class PerformanceBasedSampler(Sampler):
                 length += len(self.dataset.word_length_index[pair[0]])
         return length
 
-        def update_target_pairs(self, new_performance_metrics):
-            self.performance_metrics = new_performance_metrics
-            new_target_pairs = self._select_target_pairs()
-            if new_target_pairs != self.last_used_pairs:
-                self.target_pairs = new_target_pairs
-                self.last_used_pairs = new_target_pairs
-                self.dataset.rebuild_pair_index(new_target_pairs)
+    def update_target_pairs(self, new_performance_metrics):
+        self.performance_metrics = new_performance_metrics
+        new_target_pairs = self._select_target_pairs()
+        if new_target_pairs != self.last_used_pairs:
+            # print()
+            # print(f"form update target")
+            # print()
+            self.target_pairs = new_target_pairs
+            self.last_used_pairs = new_target_pairs
+            self.dataset.rebuild_pair_index(new_target_pairs)
+
+    # def update_target_pairs(self, new_performance_metrics):
+    #     self.performance_metrics = new_performance_metrics
+    #     new_target_pairs = self._select_target_pairs()
+
+    #     # Update target pairs and rebuild index regardless of whether
+    #     # they have changed since the last update
+    #     self.target_pairs = new_target_pairs
+    #     self.last_used_pairs = new_target_pairs
+    #     self.dataset.rebuild_pair_index(new_target_pairs)
+
+    #     # Optional: Add a print statement for debugging
+    #     print(f"Updated target pairs: {new_target_pairs}")
+
 
 # =================================================
 # class PerformanceBasedSampler(Sampler):

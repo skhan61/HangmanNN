@@ -120,12 +120,32 @@ class HangmanModel(pl.LightningModule):
         eval_metrics = self.evaluate_and_log()
         self.last_eval_metrics = eval_metrics
 
+        length_wise_stats = eval_metrics['length_wise_stats']
+
+        # # Log length-wise statistics
+        # for word_length, lw_stats in length_wise_stats.items():
+        #     self.log(f'win_rate_{word_length}',
+        #              lw_stats['win_rate'], on_step=False, on_epoch=True, prog_bar=False)
+        #     self.log(f'avg_attempts_{word_length}',
+        #              lw_stats['average_attempts_used'], on_step=False, on_epoch=True, prog_bar=False)
+        # # Switch back to training mode
+
         # Log existing metrics
         self.log('test_win_rate', eval_metrics['win_rate'],
                  on_step=False, on_epoch=True, prog_bar=True)
 
         self.log('overall_avg_attempts',
                  eval_metrics['attempts'], on_step=False, on_epoch=True, prog_bar=True)
+
+        # Update the data module's sampler with new performance metrics, if applicable
+        if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
+            self.trainer.datamodule.update_performance_metrics(
+                length_wise_stats)
+
+        # # Update the target pairs in the sampler
+        # if self.trainer and hasattr(self.trainer, 'data_module') and hasattr(self.trainer.data_module, 'sampler'):
+        #     self.trainer.data_module.sampler.update_target_pairs(
+        #         new_performance_metrics)
 
         return eval_metrics
 
@@ -138,32 +158,30 @@ class HangmanModel(pl.LightningModule):
             self, self.test_words, self.char_frequency, self.max_word_length)
 
         # Extracting necessary statistics
-        stats = result['stats']
+        word_stats = result['stats']
         win_rate = result['overall_win_rate']
         attempts = result['overall_avg_attempts']
         length_wise_stats = result['length_wise_stats']
 
         # # print(length_wise_stats)
 
-        # Log the extracted statistics
-        self.log('win_rate', win_rate, on_step=False,
-                 on_epoch=True, prog_bar=True)
-        self.log('avg_attempts', attempts, on_step=False,
-                 on_epoch=True, prog_bar=True)
+        # # Log the extracted statistics
+        # self.log('win_rate', win_rate, on_step=False,
+        #          on_epoch=True, prog_bar=True)
+        # self.log('avg_attempts', attempts, on_step=False,
+        #          on_epoch=True, prog_bar=True)
 
         # Log length-wise statistics
-        for word_length, lw_stats in length_wise_stats.items():
-            self.log(f'win_rate_{word_length}',
-                     lw_stats['win_rate'], on_step=False, on_epoch=True, prog_bar=False)
-            self.log(f'avg_attempts_{word_length}',
-                     lw_stats['average_attempts_used'], on_step=False, on_epoch=True, prog_bar=False)
-
+        # for word_length, lw_stats in length_wise_stats.items():
+        #     self.log(f'win_rate_{word_length}',
+        #              lw_stats['win_rate'], on_step=False, on_epoch=True, prog_bar=False)
+        #     self.log(f'avg_attempts_{word_length}',
+        #              lw_stats['average_attempts_used'], on_step=False, on_epoch=True, prog_bar=False)
         # Switch back to training mode
         self.train()
 
         # Return the collected statistics
-        return {'stats': stats, 'win_rate': win_rate,
-                'attempts': attempts, 'length_wise_stats': length_wise_stats}
+        return {'win_rate': win_rate, 'attempts': attempts, 'length_wise_stats': length_wise_stats}
 
     # def evaluate_and_log(self):
     #     # Ensure the model is in evaluation mode
@@ -335,17 +353,17 @@ class HangmanModel(pl.LightningModule):
             outputs, miss_chars, input_lens)
         # print(f"miss_penalty: ", miss_penalty)
 
-        # # Calculate weights for loss function
-        # weights_orig = (1 / input_lens.float()) / torch.sum(1 / input_lens)
+        # Calculate weights for loss function
+        weights_orig = (1 / input_lens.float()) / torch.sum(1 / input_lens)
 
-        # weights = weights_orig.unsqueeze(1).unsqueeze(
-        #     2).expand(-1, outputs.size(1), -1)
+        weights = weights_orig.unsqueeze(1).unsqueeze(
+            2).expand(-1, outputs.size(1), -1)
 
-        # Assign constant weights for debugging
-        constant_weight_value = 1.0  # You can choose any constant value
-        weights = torch.full(size=(outputs.size(0), outputs.size(1), labels.size(2)),
-                             fill_value=constant_weight_value,
-                             device=outputs.device)
+        # # Assign constant weights for debugging
+        # constant_weight_value = 1.0  # You can choose any constant value
+        # weights = torch.full(size=(outputs.size(0), outputs.size(1), labels.size(2)),
+        #                      fill_value=constant_weight_value,
+        #                      device=outputs.device)
 
         # print(f"weights shape: ", weights.shape)
 
