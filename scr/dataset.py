@@ -124,7 +124,8 @@ class HangmanDataset(Dataset):
 
     def get_all_group_labels(self):
         """
-        Returns a list of all unique group labels (difficulty, outcome) and unique word lengths in the dataset.
+        Returns a list of all unique group labels (difficulty, outcome) 
+        and unique word lengths in the dataset.
         """
         group_labels = set()
         word_lengths = set()

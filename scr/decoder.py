@@ -76,14 +76,16 @@ class SimpleLSTM(nn.Module):
         combined = torch.cat(
             [unpacked_output, hidden.unsqueeze(1).repeat(1,
                                                          unpacked_output.size(1), 1),
-                missed_chars_processed], dim=2)
+             missed_chars_processed], dim=2)
 
         # print(f"Combine shape: {combined.shape}")
 
         # Apply the linear layer to the concatenated output
         out = self.linear(combined)
 
-        return out
+        logit = F.softmax(out, dim=-1)
+
+        return logit
 
 
 def test_simple_lstm():
@@ -118,9 +120,13 @@ def test_simple_lstm():
     # Test the SimpleLSTM with the dummy data
     output = model(features, original_seq_lens, missed_chars)
 
-    print()
+    # print()
 
     print(f"Output shape: {output.shape}")
+
+    # print()
+
+    # print(f"{output}")
 
 
 if __name__ == "__main__":

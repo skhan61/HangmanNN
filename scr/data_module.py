@@ -52,7 +52,8 @@ class HangmanDataModule(LightningDataModule):
             raise ValueError("Validation dataset is empty.")
 
         return DataLoader(self.val_dataset, batch_size=self.batch_size,
-                          collate_fn=self.collate_fn, num_workers=os.cpu_count() or 1)
+                          collate_fn=self.collate_fn,
+                          num_workers=os.cpu_count() or 1)
 
     def update_performance_metrics(self, new_performance_metrics):
         self.performance_metrics = new_performance_metrics

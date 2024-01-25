@@ -10,49 +10,13 @@ import torch
 from torch.utils.data import Sampler
 
 from scr.dataset import *
-
-# class PerformanceBasedSampler(Sampler):
-#     def __init__(self, dataset, performance_metrics, batch_size):
-#         self.dataset = dataset
-#         self.performance_metrics = performance_metrics
-#         self.batch_size = batch_size
-#         self.target_pairs = self._select_target_pairs()
-#         self.last_used_pairs = None
-
-#     def _select_target_pairs(self):
-#         metrics = [(name, score) for name, score in self.performance_metrics.items(
-#         ) if "avg_miss_penalty_" in name]
-#         metrics.sort(key=lambda x: x[1], reverse=True)
-#         target_pairs = [re.findall(r"'([^']*)'", name)
-#                         for name, _ in metrics[:self.batch_size]]
-#         return [tuple(pair) for pair in target_pairs if len(pair) == 2]
-
-#     def __iter__(self):
-#         if self.target_pairs != self.last_used_pairs:
-#             self.last_used_pairs = self.target_pairs
-#             self.dataset.rebuild_pair_index(self.target_pairs)
-
-#         valid_indices = []
-#         for difficulty, outcome in self.target_pairs:
-#             if (difficulty, outcome) in self.dataset.pair_index:
-#                 valid_indices.extend([(difficulty, outcome, file_idx, local_idx)
-#                                       for file_idx, local_idx in self.dataset.pair_index[(difficulty, outcome)]])
-#         return iter(valid_indices)
-
-#     def __len__(self):
-#         return sum(len(self.dataset.pair_index[pair]) for pair in self.target_pairs)
-
-#     def update_target_pairs(self, new_performance_metrics):
-#         self.performance_metrics = new_performance_metrics
-#         new_target_pairs = self._select_target_pairs()
-#         if new_target_pairs != self.last_used_pairs:
-#             self.target_pairs = new_target_pairs
-#             self.last_used_pairs = new_target_pairs
-#             self.dataset.rebuild_pair_index(new_target_pairs)
+from scr.utils import *
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, dataset, performance_metrics, batch_size, score_threshold=0):
+    def __init__(self, dataset, performance_metrics,
+                 batch_size, score_threshold=0):
+
         self.dataset = dataset
 
         # print(self.dataset.word_length_index)
@@ -68,22 +32,34 @@ class PerformanceBasedSampler(Sampler):
         # Initialize an empty list for target pairs
         target_pairs = []
 
-        # print(self.performance_metrics.keys())
+        threshold = 0.75
+
+        # print(self.performance_metrics)
 
         # Iterate through performance metrics and apply the selection criteria
         for word_length, metrics in self.performance_metrics.items():
             if isinstance(metrics, dict):
-                win_rate = metrics.get('win_rate', 0)
-                avg_attempts = metrics.get('average_attempts_used', 0)
+                score = calculate_difficulty_score(metrics)
+                # win_rate = metrics.get('performance_wins', 0)
+                # avg_attempts = metrics.get(
+                #     'performance_total_attempts_used', 0)
+                # miss_penalty = metrics.get('miss_penalty_avg', 0)
+
+                # # Apply the criteria for win rate and average attempts
+                # if win_rate <= 10 and avg_attempts >= 4:
+                #     # Add the word length as a target pair
+                #     target_pairs.append((int(word_length),))
 
                 # Apply the criteria for win rate and average attempts
-                if win_rate <= 20: #and avg_attempts >= 4:
+                # if win_rate <= 10 or avg_attempts >= 4 or miss_penalty >= 0.0001:
+                if score > threshold:
                     # Add the word length as a target pair
                     target_pairs.append((int(word_length),))
 
-        # # Limit the number of target pairs based on batch size
+        # # # Limit the number of target pairs based on batch size
         # print(target_pairs)
         target_pairs = target_pairs[:self.batch_size]
+
         return target_pairs
 
     def __iter__(self):
@@ -91,6 +67,7 @@ class PerformanceBasedSampler(Sampler):
         # print(self.target_pairs)
 
         # print(f"{self.dataset.word_length_index}")
+
         # Rebuild pair index if target pairs have changed
         if self.target_pairs != self.last_used_pairs:
             # print(f"rebuilding")
@@ -140,20 +117,6 @@ class PerformanceBasedSampler(Sampler):
             self.target_pairs = new_target_pairs
             self.last_used_pairs = new_target_pairs
             self.dataset.rebuild_pair_index(new_target_pairs)
-
-    # def update_target_pairs(self, new_performance_metrics):
-    #     self.performance_metrics = new_performance_metrics
-    #     new_target_pairs = self._select_target_pairs()
-
-    #     # Update target pairs and rebuild index regardless of whether
-    #     # they have changed since the last update
-    #     self.target_pairs = new_target_pairs
-    #     self.last_used_pairs = new_target_pairs
-    #     self.dataset.rebuild_pair_index(new_target_pairs)
-
-    #     # Optional: Add a print statement for debugging
-    #     print(f"Updated target pairs: {new_target_pairs}")
-
 
 # =================================================
 # class PerformanceBasedSampler(Sampler):

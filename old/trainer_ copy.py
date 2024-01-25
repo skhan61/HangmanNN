@@ -77,9 +77,9 @@ class HangmanModel(pl.LightningModule):
 
         # Log metrics
         self.log('val_loss', loss, on_step=True, on_epoch=True,
-                 prog_bar=True, batch_size=len(states))
+                 prog_bar=False, batch_size=len(states))
         self.log('val_miss_penalty', miss_penalty, on_step=True,
-                 on_epoch=True, prog_bar=True, batch_size=len(states))
+                 on_epoch=True, prog_bar=False, batch_size=len(states))
 
         # Update the validation_epoch_metrics dictionary
         self.validation_epoch_metrics['validation_epoch_loss_sum'] += loss.item()
@@ -95,11 +95,11 @@ class HangmanModel(pl.LightningModule):
             item_miss_penalty = self.calculate_miss_penalty(
                 outputs[i], batch_missed_chars[i], original_seq_lengths_tensor[i])
             batch_miss_penalties.append(
-                (batch['word_length'][i], item_miss_penalty.item()))
+                (original_seq_lengths_tensor[i].item(), item_miss_penalty.item()))
 
         # Group by word length
-        unique_word_lengths = set(batch['word_length'])
-        for length in unique_word_lengths:
+        word_lengths = set(original_seq_lengths_tensor.tolist())
+        for length in word_lengths:
             penalties_for_length = [
                 penalty for word_len, penalty in batch_miss_penalties if word_len == length]
             if penalties_for_length:
@@ -115,48 +115,50 @@ class HangmanModel(pl.LightningModule):
         eval_metrics = self.evaluate_and_log()
         self.last_eval_metrics = eval_metrics
 
+        length_wise_stats = eval_metrics.get('length_wise_stats', {})
+
         # Log existing metrics
-        self.log('win_rate', eval_metrics.get('win_rate', 0),
-                 on_step=False, on_epoch=True, prog_bar=True)
-        self.log('avg_attempts', eval_metrics.get('attempts', 0),
+        self.log('test_win_rate', eval_metrics.get('win_rate', 0),
                  on_step=False, on_epoch=True, prog_bar=True)
 
-        # Prepare for aggregating word length-wise stats
-        length_wise_stats = eval_metrics.get('length_wise_stats', {})
+        self.log('overall_avg_attempts',
+                 eval_metrics.get('attempts', 0), on_step=False, on_epoch=True, prog_bar=True)
+
+        # Aggregate and log word length-wise miss penalties
         for length, penalties in self.granular_miss_penalty_stats.items():
-            if penalties:
+            if penalties:  # Check if there are penalties to aggregate
                 avg_penalty = sum(penalties) / len(penalties)
                 length_wise_stats[f'miss_penalty_{length}'] = avg_penalty
-                # Log the average penalty for each word length
-                self.log(f'validation_miss_penalty_avg_{length}', avg_penalty,
-                         on_step=False, on_epoch=True, prog_bar=False)
-
-        performance_dict = {
-            'length_wise_performance_stats': length_wise_stats,
-            'granular_miss_penalty_stats': self.granular_miss_penalty_stats
-        }
-
-        # Flattening the nested dictionary
-        flattened_data = flatten_dict(performance_dict)
-
-        # Reorganizing the data by word length
-        aggregated_metrics = reorganize_by_word_length(flattened_data)
-
-        # Flattening the organized data for logging
-        loggable_data_aggregated_metrics = flatten_for_logging(
-            aggregated_metrics)
-
-        # Log each item in the flattened data
-        for key, value in loggable_data_aggregated_metrics.items():
-            if isinstance(value, (int, float)):
-                self.log(key, value, on_step=False, on_epoch=True)
+                self.log(f'miss_penalty_{length}', avg_penalty,
+                         on_step=False, on_epoch=True, prog_bar=True)
 
         # Update the data module's sampler with new performance metrics, if applicable
         if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
             self.trainer.datamodule.update_performance_metrics(
-                aggregated_metrics)
+                length_wise_stats)
 
-        return {'aggregated_metric': aggregated_metrics}
+        return eval_metrics
+
+    # def on_validation_epoch_end(self):
+    #     # Evaluating and logging overall metrics from the custom evaluation method
+    #     eval_metrics = self.evaluate_and_log()
+    #     self.last_eval_metrics = eval_metrics
+
+    #     length_wise_stats = eval_metrics['length_wise_stats']
+
+    #     # Log existing metrics
+    #     self.log('test_win_rate', eval_metrics['win_rate'],
+    #              on_step=False, on_epoch=True, prog_bar=True)
+
+    #     self.log('overall_avg_attempts',
+    #              eval_metrics['attempts'], on_step=False, on_epoch=True, prog_bar=True)
+
+    #     # Update the data module's sampler with new performance metrics, if applicable
+    #     if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
+    #         self.trainer.datamodule.update_performance_metrics(
+    #             length_wise_stats)
+
+    #     return eval_metrics
 
     def evaluate_and_log(self):
         # Ensure the model is in evaluation mode
@@ -318,14 +320,8 @@ class HangmanModel(pl.LightningModule):
 
         # print(f"weights shape: ", weights.shape)
 
-        loss_func = nn.BCEWithLogitsLoss(weight=weights,
-                                         reduction='none')
+        loss_func = nn.BCEWithLogitsLoss(weight=weights, reduction='none')
 
-        # print()
-        # print(f'{labels}')
-        # print()
-
-        # 'outputs' are logits, 'labels' are 0/1
         loss = loss_func(outputs, labels)
 
         # Ensure seq_lens_mask is on the same device as model_out
@@ -352,6 +348,6 @@ class HangmanModel(pl.LightningModule):
         l2_loss = l2_factor * l2_reg
 
         # Final loss
-        total_loss = loss + 0.25 * miss_penalty + l1_loss + l2_loss
+        total_loss = loss + miss_penalty + l1_loss + l2_loss
 
         return total_loss, miss_penalty

@@ -16,6 +16,88 @@ import torch
 from scr.dataset import *
 
 
+def calculate_difficulty_score(metrics, weight_win_rate=1.0,
+                               weight_miss_penalty=0.5):
+    """
+    Calculates the difficulty score based on win rate and miss penalty.
+
+    :param metrics: Dictionary containing 'performance_wins' and 'miss_penalty_avg'.
+    :param weight_win_rate: Weight for the win rate metric.
+    :param weight_miss_penalty: Weight for the miss penalty metric.
+    :return: Calculated difficulty score.
+    """
+    # Extracting the metrics
+    win_rate = metrics.get('performance_wins', 0)
+    miss_penalty = metrics.get('miss_penalty_avg', 0)
+
+    # Normalize the metrics (invert win rate as lower win rate indicates higher difficulty)
+    normalized_win_rate = (100 - win_rate) / 100
+    normalized_miss_penalty = miss_penalty  # Already in range 0 to 1
+
+    # Calculate the composite score
+    composite_score = (
+        weight_win_rate * normalized_win_rate +
+        weight_miss_penalty * normalized_miss_penalty
+    )
+
+    return composite_score
+
+
+# Function to flatten a nested dictionary
+def flatten_dict(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = f'{parent_key}{sep}{k}' if parent_key else k
+        if isinstance(v, MutableMapping):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+# def flatten_dict(d, parent_key='', sep='_'):
+#     items = []
+#     for k, v in d.items():
+#         new_key = f'{parent_key}{sep}{k}' if parent_key else k
+#         if isinstance(v, collections.abc.MutableMapping):
+#             items.extend(flatten_dict(v, new_key, sep=sep).items())
+#         else:
+#             items.append((new_key, v))
+#     return dict(items)
+
+
+# Function to reorganize the flattened data by word length
+
+def reorganize_by_word_length(flattened_data):
+    word_length_stats = {}
+
+    for key, value in flattened_data.items():
+        parts = key.split('_')
+        word_length = next((int(part)
+                           for part in parts if part.isdigit()), None)
+
+        if word_length is not None:
+            # Determine the stat category by excluding the word length and initial identifier
+            stat_category = '_'.join(part for part in parts if not part.isdigit(
+            ) and part != 'length' and part != 'wise' and part != 'performence' and part != 'stats')
+
+            if word_length not in word_length_stats:
+                word_length_stats[word_length] = {}
+
+            word_length_stats[word_length][stat_category] = value
+
+    return word_length_stats
+
+
+def flatten_for_logging(aggregated_metrics):
+    loggable_metrics = {}
+    for word_len, stats in aggregated_metrics.items():
+        for stat, value in stats.items():
+            flattened_key = f'{stat}_{word_len}'
+            loggable_metrics[flattened_key] = value
+    return loggable_metrics
+
+
 def save_dataset_pickle(dataset, file_name='data/train_dataset.pkl'):
     with open(file_name, 'wb') as file:
         pickle.dump(dataset, file)
@@ -102,15 +184,15 @@ def sample_words(words, total_sample_size=1000):
     return sampled_words
 
 
-def flatten_dict(d, parent_key='', sep='_'):
-    items = []
-    for k, v in d.items():
-        new_key = f'{parent_key}{sep}{k}' if parent_key else k
-        if isinstance(v, collections.abc.MutableMapping):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
+# def flatten_dict(d, parent_key='', sep='_'):
+#     items = []
+#     for k, v in d.items():
+#         new_key = f'{parent_key}{sep}{k}' if parent_key else k
+#         if isinstance(v, collections.abc.MutableMapping):
+#             items.extend(flatten_dict(v, new_key, sep=sep).items())
+#         else:
+#             items.append((new_key, v))
+#     return dict(items)
 
 
 def plot_hangman_stats(data):
@@ -190,5 +272,3 @@ def split_hangman_dataset(dataset, train_ratio=0.8):
                                      for indices in valid_indices.values())
 
     return train_dataset, valid_dataset
-
-
