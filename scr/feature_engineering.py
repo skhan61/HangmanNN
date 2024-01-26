@@ -75,6 +75,79 @@ def encode_guess(self, guess):
     return char_to_idx.get(guess, char_to_idx['_'])
 
 
+# def build_feature_set(sample, char_frequency,
+#                                max_word_length,
+#                                ngram_n=3, normalize=True):
+#     print(type(sample))
+#     print(sample)
+
+
+#     word = sample['word']
+#     word_len = sample['word_length']
+#     game_state = sample['game_state']
+
+#     # Use existing methods to encode word and extract features
+#     encoded_word = encode_word(word)
+#     word_length_feature = [word_len / max_word_length] * word_len
+#     positional_feature = [pos / max_word_length for pos in range(word_len)]
+#     frequency_feature = [char_frequency.get(idx_to_char.get(char_idx, '_'), 0)
+#                          for char_idx in encoded_word]
+#     ngrams = extract_ngrams(word, ngram_n)
+#     ngram_feature = encode_ngrams(ngrams, ngram_n)
+
+#     # Encode game state
+#     game_state_feature = encode_game_state(game_state)
+
+#     # New Features
+#     initial_state_feature = encode_word(
+#         sample['initial_state'][0])  # Encoding initial state
+#     final_state_feature = encode_word(
+#         sample['final_state'])  # Encoding final state
+#     guessed_letters_feature = [char_to_idx[char]
+#                                for char in sample['guessed_letters']]  # Encoding guessed letters
+#     difficulty_feature = [0 if sample['difficulty']
+#                           == 'medium' else 1]  # Encoding difficulty
+
+#     # def build_enhanced_feature_set(sample, char_frequency, max_word_length, ngram_n=3, normalize=True):
+#     # # ... [previous code] ...
+
+#     # Normalize and pad/truncate new features
+#     guessed_letters_feature = pad_tensor(torch.tensor(guessed_letters_feature,
+#                                                       dtype=torch.long), max_word_length)
+#     initial_state_feature = pad_tensor(torch.tensor(initial_state_feature,
+#                                                     dtype=torch.long), max_word_length)
+#     final_state_feature = pad_tensor(torch.tensor(final_state_feature,
+#                                                   dtype=torch.long), max_word_length)
+
+#     # Ensure ngram_feature is the same length as other features
+#     ngram_feature = pad_tensor(torch.tensor(
+#         ngram_feature, dtype=torch.float), max_word_length)
+
+#     # Combine all features
+#     combined_features = [
+#         pad_tensor(torch.tensor(encoded_word, dtype=torch.long),
+#                    max_word_length),
+#         pad_tensor(torch.tensor(word_length_feature,
+#                    dtype=torch.float), max_word_length),
+#         pad_tensor(torch.tensor(positional_feature,
+#                    dtype=torch.float), max_word_length),
+#         pad_tensor(torch.tensor(frequency_feature,
+#                    dtype=torch.float), max_word_length),
+#         ngram_feature,
+#         guessed_letters_feature,
+#         initial_state_feature,
+#         final_state_feature,
+#         pad_tensor(torch.tensor(difficulty_feature,
+#                    dtype=torch.float), max_word_length),
+#         pad_tensor(torch.tensor(game_state_feature,
+#                    dtype=torch.float), max_word_length)
+#     ]
+
+#     # Stack features
+#     features_stacked = torch.stack(combined_features, dim=1)
+
+#     return features_stacked
+
 def build_feature_set(word, char_frequency,
                       max_word_length, ngram_n=3, normalize=True):
 

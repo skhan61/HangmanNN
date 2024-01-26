@@ -232,6 +232,45 @@ class HangmanDataset(Dataset):
 #         return {key: len(indices) for key, indices in self.pair_index.items()}
 
 
+def new_custom_collate_fn(batch):
+    max_seq_len = max(len(item['guessed_states']) for item in batch)
+
+    # Preallocate arrays with maximum sequence length
+    padded_states = [[''] * max_seq_len for _ in batch]
+    padded_letters = [[''] * max_seq_len for _ in batch]
+    original_seq_lengths = [len(item['guessed_states']) for item in batch]
+
+    # Additional fields
+    difficulties = [item['difficulty'] for item in batch]
+    outcomes = [item['outcome'] for item in batch]
+    word_lengths = [item['word_length'] for item in batch]
+    won_flags = [item['won'] for item in batch]
+    game_ids = [item['game_id'] for item in batch]
+    initial_states = [item['initial_state'] for item in batch]
+    final_states = [item['final_state'] for item in batch]
+    game_states = [item['game_state'] for item in batch]
+
+    for i, item in enumerate(batch):
+        seq_len = original_seq_lengths[i]
+        padded_states[i][:seq_len] = item['guessed_states']
+        padded_letters[i][:seq_len] = item['guessed_letters']
+
+    return {
+        'guessed_states': padded_states,
+        'guessed_letters': padded_letters,
+        'max_seq_len': max_seq_len,
+        'original_seq_lengths': original_seq_lengths,
+        'difficulty': difficulties,
+        'outcome': outcomes,
+        'word_length': word_lengths,
+        'won': won_flags,
+        'game_id': game_ids,
+        'initial_state': initial_states,
+        'final_state': final_states,
+        'game_state': game_states
+    }
+
+
 def custom_collate_fn(batch):
     max_seq_len = max(len(item['guessed_states']) for item in batch)
 

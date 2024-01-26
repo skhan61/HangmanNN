@@ -352,6 +352,6 @@ class HangmanModel(pl.LightningModule):
         l2_loss = l2_factor * l2_reg
 
         # Final loss
-        total_loss = loss + 0.25 * miss_penalty + l1_loss + l2_loss
+        total_loss = loss + 0.5 * miss_penalty + l1_loss + l2_loss
 
         return total_loss, miss_penalty

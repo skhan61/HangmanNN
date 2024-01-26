@@ -25,6 +25,21 @@ def calculate_difficulty_score(metrics, weight_win_rate=1.0,
     :param weight_win_rate: Weight for the win rate metric.
     :param weight_miss_penalty: Weight for the miss penalty metric.
     :return: Calculated difficulty score.
+
+    Best Case Scenario (Lowest Difficulty for Players):
+    - Win Rate: 100% - The word is guessed correctly almost every time, 
+        indicating it is easy for players.
+    - Miss Penalty: 0 - There are rarely any incorrect guesses for this word.
+    - Difficulty Score: 0 - This score suggests that the word is the least 
+        challenging for players.
+
+    Worst Case Scenario (Highest Difficulty for Players):
+    - Win Rate: 0% - The word is almost never guessed correctly, 
+        indicating it is very difficult for players.
+    - Miss Penalty: 1 - There is a high frequency of 
+        incorrect guesses for this word.
+    - Difficulty Score: 1.5 - This score suggests 
+        that the word is highly challenging for players.
     """
     # Extracting the metrics
     win_rate = metrics.get('performance_wins', 0)

@@ -52,7 +52,7 @@ class PerformanceBasedSampler(Sampler):
 
                 # Apply the criteria for win rate and average attempts
                 # if win_rate <= 10 or avg_attempts >= 4 or miss_penalty >= 0.0001:
-                if score > threshold:
+                if score >= threshold:
                     # Add the word length as a target pair
                     target_pairs.append((int(word_length),))
 
