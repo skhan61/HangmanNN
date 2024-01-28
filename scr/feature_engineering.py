@@ -16,6 +16,10 @@ idx_to_char = {idx: char for char, idx in char_to_idx.items()}
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+game_states = ['allMasked', 'early', 'quarterRevealed', 'midRevealed',
+               'midLateRevealed', 'lateRevealed', 'nearEnd']
+game_state_to_idx = {state: idx for idx, state in enumerate(game_states)}
+
 
 def encode_word(word):
     # print(word)
@@ -70,86 +74,44 @@ def extract_ngrams(word, n):
 # 3. Inference Data Preparation
 # Dont not change
 
-def encode_guess(self, guess):
-    # Assuming guess is a single character
-    return char_to_idx.get(guess, char_to_idx['_'])
+def encode_guessed_letters(guessed_letters, char_to_idx):
+    # Initialize the encoded vector with zeros
+    # The size is based on the length of the char_to_idx dictionary
+    encoded = [0] * len(char_to_idx)
+
+    for letter in guessed_letters:
+        # Handle special cases: empty and underscore
+        if letter == '':
+            index = char_to_idx['']
+        elif letter == '_':
+            index = char_to_idx['_']
+        else:
+            # Standard alphabet
+            index = char_to_idx.get(letter.lower(), 0)
+
+        # Set the corresponding index to 1
+        encoded[index] = 1
+
+    return encoded
+# =============================================================
 
 
-# def build_feature_set(sample, char_frequency,
-#                                max_word_length,
-#                                ngram_n=3, normalize=True):
-#     print(type(sample))
-#     print(sample)
+def extract_char_features_from_state(word, char_frequency,
+                                     max_word_length, ngram_n=3, normalize=True):
+    """
+        Extracts a variety of features from a single game state, including character frequencies,
+        positional information, and n-gram features.
 
+        Parameters:
+        - state: The current game state (e.g., '_ppl_')
+        - char_freq_dict: Dictionary mapping characters to their frequencies in some corpus
+        - max_state_length: The maximum length of the game state to standardize feature length
+        - ngram_size: The size of n-grams to consider for n-gram features
+        - normalize: Whether to normalize certain features
 
-#     word = sample['word']
-#     word_len = sample['word_length']
-#     game_state = sample['game_state']
-
-#     # Use existing methods to encode word and extract features
-#     encoded_word = encode_word(word)
-#     word_length_feature = [word_len / max_word_length] * word_len
-#     positional_feature = [pos / max_word_length for pos in range(word_len)]
-#     frequency_feature = [char_frequency.get(idx_to_char.get(char_idx, '_'), 0)
-#                          for char_idx in encoded_word]
-#     ngrams = extract_ngrams(word, ngram_n)
-#     ngram_feature = encode_ngrams(ngrams, ngram_n)
-
-#     # Encode game state
-#     game_state_feature = encode_game_state(game_state)
-
-#     # New Features
-#     initial_state_feature = encode_word(
-#         sample['initial_state'][0])  # Encoding initial state
-#     final_state_feature = encode_word(
-#         sample['final_state'])  # Encoding final state
-#     guessed_letters_feature = [char_to_idx[char]
-#                                for char in sample['guessed_letters']]  # Encoding guessed letters
-#     difficulty_feature = [0 if sample['difficulty']
-#                           == 'medium' else 1]  # Encoding difficulty
-
-#     # def build_enhanced_feature_set(sample, char_frequency, max_word_length, ngram_n=3, normalize=True):
-#     # # ... [previous code] ...
-
-#     # Normalize and pad/truncate new features
-#     guessed_letters_feature = pad_tensor(torch.tensor(guessed_letters_feature,
-#                                                       dtype=torch.long), max_word_length)
-#     initial_state_feature = pad_tensor(torch.tensor(initial_state_feature,
-#                                                     dtype=torch.long), max_word_length)
-#     final_state_feature = pad_tensor(torch.tensor(final_state_feature,
-#                                                   dtype=torch.long), max_word_length)
-
-#     # Ensure ngram_feature is the same length as other features
-#     ngram_feature = pad_tensor(torch.tensor(
-#         ngram_feature, dtype=torch.float), max_word_length)
-
-#     # Combine all features
-#     combined_features = [
-#         pad_tensor(torch.tensor(encoded_word, dtype=torch.long),
-#                    max_word_length),
-#         pad_tensor(torch.tensor(word_length_feature,
-#                    dtype=torch.float), max_word_length),
-#         pad_tensor(torch.tensor(positional_feature,
-#                    dtype=torch.float), max_word_length),
-#         pad_tensor(torch.tensor(frequency_feature,
-#                    dtype=torch.float), max_word_length),
-#         ngram_feature,
-#         guessed_letters_feature,
-#         initial_state_feature,
-#         final_state_feature,
-#         pad_tensor(torch.tensor(difficulty_feature,
-#                    dtype=torch.float), max_word_length),
-#         pad_tensor(torch.tensor(game_state_feature,
-#                    dtype=torch.float), max_word_length)
-#     ]
-
-#     # Stack features
-#     features_stacked = torch.stack(combined_features, dim=1)
-
-#     return features_stacked
-
-def build_feature_set(word, char_frequency,
-                      max_word_length, ngram_n=3, normalize=True):
+        Returns:
+        - A tensor of combined features extracted from the game state
+    """
 
     word_len = len(word)
 
@@ -204,79 +166,285 @@ def build_feature_set(word, char_frequency,
     return features_padded  # Only return the feature tensor
 
 
-def process_single_state(word, char_frequency, max_word_length):
+def extract_hangman_game_features(current_game_state,
+                                  cumulative_guessed_letters, maximum_word_length):
+    """
+    Enhanced feature extraction for Hangman game analysis, including more game-level insights and
+    new aspects like letter positional information, game dynamics, and difficulty estimation.
+
+    Parameters:
+    - current_game_state (str): The current revealed state of the word being guessed, with '_'
+                representing unrevealed letters.
+    - cumulative_guessed_letters (list): All letters guessed up to this point,
+                including both correct and incorrect guesses.
+    - maximum_word_length (int): The maximum possible length of the word being guessed,
+                used to normalize some of the features.
+
+    Returns:
+    - torch.Tensor: A tensor containing multiple features for game analysis:
+        - Uncovered Progress: The fraction of the word that has been correctly guessed so far.
+        - Missed/failed Guesses: The number of guessed letters that are not part of the word.
+        - Duplicate Guesses: The number of letters that have been guessed more than once.
+        - Current Guess Accuracy: 1 if the latest guess is correct (appears in the current game state), \
+            0 otherwise.
+        - Endgame Proximity: The ratio of the number of guesses made to the maximum word length,
+                    indicating how close the game is to ending based on the number of guesses.
+        - Guess Diversity: The diversity of guesses, calculated as the number of unique guesses
+                    made divided by the total number of guesses.
+        - Initial Letter Reveal: Proportion of initial letters correctly guessed.
+        - Critical Letter Uncover Rate: Rate at which critical letters are uncovered.
+        - Guess Efficiency: Ratio of unique correct guesses to total guesses.
+
+    Additional features like Recent Guess Trend and Guessed Letter Frequency Alignment could be considered
+    for future implementation to provide deeper insights into guessing patterns and alignment with common
+    language frequencies.
+    """
+
+    # Existing feature calculations
+    uncovered_progress = (maximum_word_length -
+                          current_game_state.count('_')) / maximum_word_length
+    missed_guesses = len(
+        [letter for letter in cumulative_guessed_letters if letter not in current_game_state])
+
+    duplicate_guesses = sum([1 for letter in set(
+        cumulative_guessed_letters) if cumulative_guessed_letters.count(letter) > 1])
+
+    current_guess_accuracy = 1 if cumulative_guessed_letters[-1] in current_game_state else 0
+
+    endgame_proximity = len(cumulative_guessed_letters) / maximum_word_length
+
+    guess_diversity = len(set(cumulative_guessed_letters)) / \
+        len(cumulative_guessed_letters) if cumulative_guessed_letters else 0
+
+    # New feature calculations
+    # Simple binary for initial letter reveal
+    initial_letter_reveal = 1 if current_game_state[0] != '_' else 0
+    # print(initial_letter_reveal)
+    critical_letters = 'aeiou'  # vowel
+    critical_letter_uncover_rate = sum(
+        [1 for letter in current_game_state if letter in critical_letters]) \
+        / len(critical_letters) if critical_letters else 0
+
+    correct_guesses = set(current_game_state.replace(
+        '_', '')) & set(cumulative_guessed_letters)
+    guess_efficiency = len(
+        correct_guesses) / len(cumulative_guessed_letters) \
+        if cumulative_guessed_letters else 0
+
+    # Compile all features into a tensor
+    features = torch.tensor([
+        uncovered_progress,
+        missed_guesses,
+        duplicate_guesses,
+        current_guess_accuracy,
+        endgame_proximity,
+        guess_diversity,
+        initial_letter_reveal,
+        critical_letter_uncover_rate,
+        guess_efficiency
+    ], dtype=torch.float)
+
+    return features
+
+
+def analyze_guess_outcomes(game_states, guesses, maximum_word_length=None):
+    # Total number of new letters revealed by all guesses
+    total_new_letters_revealed = 0
+    guess_outcomes = []  # Tracks the success (1) or failure (0) of each guess
+
+    for i in range(1, len(game_states)):
+        prev_state = game_states[i-1]
+        current_state = game_states[i]
+
+        # # Debug print to check the lengths and contents of prev_state and current_state
+        # print(
+        #     f"Iteration {i}: prev_state='{prev_state}' (len={len(prev_state)}), \
+        #         current_state='{current_state}' (len={len(current_state)})")
+
+        new_letters_this_guess = 0
+        for j in range(len(prev_state)):
+            # Additional check to avoid index out of range
+            if j < len(current_state) and prev_state[j] == '_' and current_state[j] != '_':
+                new_letters_this_guess += 1
+
+        # # Debug print to check new letters revealed by the current guess
+        # print(
+        #     f"New letters revealed in iteration {i}: {new_letters_this_guess}")
+
+        total_new_letters_revealed += new_letters_this_guess
+
+        # Determine the success of the guess: 1 if any new letters were revealed, 0 otherwise
+        guess_success = int(new_letters_this_guess > 0)
+        guess_outcomes.append(guess_success)
+
+    if game_states:
+        # Total number of positions revealed across all states
+        total_revealed_positions = sum(
+            len(state) - state.count('_') for state in game_states[1:])
+        overall_success_rate = total_new_letters_revealed / \
+            total_revealed_positions if total_revealed_positions else 0
+    else:
+        overall_success_rate = 0
+
+    return overall_success_rate, guess_outcomes
+
+
+# overall_success_rate, guess_outcomes = analyze_guess_outcomes(
+#     game_states, guesses, maximum_word_length=None)
+
+
+def process_game_state_features_and_missed_chars(word, char_frequency, max_word_length):
     # Process a single game state (word) to get features and missed characters
-    feature_set = build_feature_set(
+    feature_set = extract_char_features_from_state(
         word, char_frequency, max_word_length)  # Get features for the word
+
+    # print(f"{feature_set.shape}")
+
     missed_chars = get_missed_characters(word)  # Get missed characters tensor
     # Return tensors for the single state
     return feature_set.squeeze(0), missed_chars
 
 
-def process_game_sequence(game_states, char_frequency,
-                          max_word_length, max_seq_length):
-    # Process a sequence of game states
-    num_features = build_feature_set(
-        game_states[0], char_frequency, max_word_length).shape[-1]  # Determine number of features
-    # Tensor for features of all states
-    sequence_features = torch.zeros(
-        max_seq_length, max_word_length * num_features)
-    # Tensor for missed characters for all states
-    sequence_missed_chars = torch.zeros(max_seq_length, len(char_to_idx))
+def process_game_sequence(game_states, guessed_letters_sequence,
+                          char_frequency, max_word_length, max_seq_length):
+    # Preprocess to get overall success rate and guess outcomes
+    overall_success_rate, guess_outcomes = analyze_guess_outcomes(
+        game_states, guessed_letters_sequence)
 
-    for i, state in enumerate(game_states):
-        if i < max_seq_length:  # Process only up to the maximum sequence length
-            state_features, missed_chars = process_single_state(
-                state, char_frequency, max_word_length)
-            # Store features in the tensor
-            sequence_features[i] = state_features.view(-1)
-            # Store missed characters in the tensor
-            sequence_missed_chars[i] = missed_chars
+    # Determine the number of features for each character in the game state
+    num_state_features = extract_char_features_from_state(
+        game_states[0], char_frequency, max_word_length).shape[-1]
 
-    # Return tensors for the entire sequence
-    return sequence_features, sequence_missed_chars
+    # Dynamically determine the size for missed characters features
+    missed_chars_features_size = len(char_to_idx)
+
+    # Dynamically determine the size for game features
+    game_features_size = extract_hangman_game_features(
+        game_states[0], guessed_letters_sequence[0], max_word_length).numel()
+
+    # Adjust the size to include state features, missed characters features, game features, \
+    # overall success rate, and guess outcomes for each timestep
+    combined_sequence_features_size = max_word_length * num_state_features + missed_chars_features_size + \
+        game_features_size + 1 + \
+        1  # +1 for overall success rate, +1 for guess outcome per timestep
+
+    # Initialize tensors for the combined sequence features and missed characters for each game state
+    combined_sequence_features = torch.zeros(
+        max_seq_length, combined_sequence_features_size)
+    sequence_missed_chars = torch.zeros(
+        max_seq_length, missed_chars_features_size)
+
+    for i, (current_state, guessed_letters) in enumerate(zip(game_states, guessed_letters_sequence)):
+        if i < max_seq_length:
+            # Extract features from the current state and the guessed letters
+            state_features, current_missed_chars = process_game_state_features_and_missed_chars(
+                current_state, char_frequency, max_word_length)
+            guessed_letters_features = torch.tensor(
+                encode_guessed_letters(guessed_letters, char_to_idx))
+
+            # Extract the additional game-related features
+            game_features = extract_hangman_game_features(
+                current_state, guessed_letters, max_word_length)
+
+            # Include the overall success rate and the guess outcome for the current timestep
+            # Use 0 for the first state where no guess was made
+            current_guess_outcome = torch.tensor(
+                [guess_outcomes[i-1]]) if i > 0 else torch.tensor([0])
+
+            # Combine the state features, guessed letters features, game-related features, \
+            # overall success rate, and guess outcome for the current timestep
+            combined_features = torch.cat([state_features.view(-1), guessed_letters_features,
+                                          game_features, torch.tensor(
+                                              [overall_success_rate]),
+                                           current_guess_outcome])
+
+            combined_sequence_features[i] = combined_features
+            sequence_missed_chars[i] = current_missed_chars
+
+    return combined_sequence_features, sequence_missed_chars
 
 
-# def process_batch_of_games(guessed_states_batch,
-#                            guessed_letters_batch, char_frequency,
-#                            max_word_length, max_seq_length):
+# def process_game_sequence(game_states, guessed_letters_sequence,
+#                           char_frequency, max_word_length, max_seq_length):
 
-def process_batch_of_games(guessed_states_batch, char_frequency,
-                           max_word_length, max_seq_length):
+#     # Determine the number of features for each character in the game state
+#     num_state_features = extract_char_features_from_state(
+#         game_states[0], char_frequency, max_word_length).shape[-1]
 
-    # # def process_batch_of_games(guessed_states_batch, char_frequency, max_word_length, max_seq_length):
-    # batch_size = len(guessed_states_batch)  # Number of games in the batch
-    # print(f"guessed_states_batch: {guessed_states_batch}")  # Debugging
-    # print(f"First state in batch: {guessed_states_batch[0]}")  # Debugging
+#     overall_success_rate, guess_outcomes = analyze_guess_outcomes(
+#         game_states, guessed_letters_sequence, maximum_word_length=None)
 
-    # first_state_features = build_feature_set(guessed_states_batch[0], char_frequency, max_word_length)
-    # print(f"Features of first state: {first_state_features}")  # Debugging
-    # num_features = first_state_features.shape[-1]  # Determine number of features
+#     print(type(overall_success_rate))
+#     print(type(guess_outcomes))
 
-    # # Rest of the function code...
+#     # Dynamically determine the size for missed characters features
+#     # Size of the character index mapping
+#     missed_chars_features_size = len(char_to_idx)
 
+#     # Dynamically determine the size for game features
+#     game_features_size = extract_hangman_game_features(
+#         game_states[0], guessed_letters_sequence[0], max_word_length).numel()
+
+#     # Initialize tensors for the combined sequence features and missed characters for each game state
+#     # Adjust the size to include state features, missed characters features, and game features
+#     combined_sequence_features = torch.zeros(
+#         max_seq_length, max_word_length * num_state_features + missed_chars_features_size + game_features_size)
+#     sequence_missed_chars = torch.zeros(
+#         max_seq_length, missed_chars_features_size)
+
+#     for i, (current_state, guessed_letters) in enumerate(zip(game_states, guessed_letters_sequence)):
+#         if i < max_seq_length:
+#             # Extract features from the current state and the guessed letters
+#             state_features, current_missed_chars = process_game_state_features_and_missed_chars(
+#                 current_state, char_frequency, max_word_length)
+#             guessed_letters_features = torch.tensor(
+#                 encode_guessed_letters(guessed_letters, char_to_idx))
+
+#             # Extract the additional game-related features
+#             game_features = extract_hangman_game_features(
+#                 current_state, guessed_letters, max_word_length)
+
+#             # Combine the state features, guessed letters features, and game-related features
+#             combined_features = torch.cat(
+#                 [state_features.view(-1), guessed_letters_features, game_features])
+
+#             combined_sequence_features[i] = combined_features
+#             sequence_missed_chars[i] = current_missed_chars
+
+#     return combined_sequence_features, sequence_missed_chars
+
+
+def process_batch_of_games(guessed_states_batch, guessed_letters_batch,
+                           char_frequency, max_word_length, max_seq_length):
     batch_size = len(guessed_states_batch)  # Number of games in the batch
-    num_features = build_feature_set(
-        guessed_states_batch[0][0], char_frequency, max_word_length).shape[-1]  # Determine number of features
 
-    # Tensor for features of all games
-    batch_features = torch.zeros(
-        batch_size, max_seq_length, max_word_length * num_features)
-    batch_missed_chars = torch.zeros(batch_size, max_seq_length, len(
-        char_to_idx))  # Tensor for missed characters for all games
+    # Assuming process_game_sequence returns tensors of correct shape
+    # We need to know the shape of the tensor it returns to initialize batch_features correctly
+    sample_features, _ = process_game_sequence(
+        guessed_states_batch[0], guessed_letters_batch[0], char_frequency, max_word_length, max_seq_length
+    )
+    feature_shape = sample_features.shape[-1]
 
+    # Initialize tensors for the entire batch
+    batch_features = torch.zeros(batch_size, max_seq_length, feature_shape)
+    batch_missed_chars = torch.zeros(
+        batch_size, max_seq_length, len(char_to_idx))
+
+    # Process each game in the batch
     for i in range(batch_size):
-        game_states = guessed_states_batch[i]  # States for a single game
-        # Letters guessed in a single game
-        # game_letters = guessed_letters_batch[i]
+        game_states = guessed_states_batch[i]
+        guessed_letters = guessed_letters_batch[i]
+
         sequence_features, sequence_missed_chars = process_game_sequence(
-            game_states, char_frequency, max_word_length, max_seq_length)
-        # Store features for each game in the batch
+            game_states, guessed_letters, char_frequency, max_word_length, max_seq_length
+        )
+
+        # Ensure the size of sequence_features matches the expected size in batch_features
+        # If there's a mismatch, you might need to adjust process_game_sequence
         batch_features[i] = sequence_features
-        # Store missed characters for each game in the batch
         batch_missed_chars[i] = sequence_missed_chars
 
-    return batch_features, batch_missed_chars  # Return tensors for the entire batch
+    return batch_features, batch_missed_chars
 
 
 def pad_and_reshape_labels(guesses, max_seq_length,
@@ -367,3 +535,60 @@ def pad_and_reshape_labels(guesses, max_seq_length,
 # print("Batch Missed Chars Shape:", batch_missed_chars.shape)  # Expected: [3, 5, len(char_to_idx)]
 
 gc.collect()
+
+
+# def process_game_sequence(game_states, guessed_letters_sequence,
+#                           char_frequency, max_word_length, max_seq_length):
+#     # Determine the number of features for each character in the game state
+#     num_state_features = extract_char_features_from_state(
+#         game_states[0], char_frequency, max_word_length).shape[-1]
+#     # print(f"Number of state features per character: {num_state_features}")  # Debugging
+
+#     # Initialize tensors for the combined sequence features and missed characters for each game state
+#     combined_sequence_features = torch.zeros(
+#         max_seq_length, max_word_length * num_state_features + 28)
+#     sequence_missed_chars = torch.zeros(max_seq_length, len(char_to_idx))
+
+#     # print(f"Initialized combined sequence features shape: {combined_sequence_features.shape}")  # Debugging
+#     # print(f"Initialized sequence missed chars shape: {sequence_missed_chars.shape}")  # Debugging
+
+#     for i, (current_state, guessed_letters) in enumerate(zip(game_states, guessed_letters_sequence)):
+#         if i < max_seq_length:
+#             # print(f"\nProcessing game state {i}: {current_state}")  # Debugging
+#             # print(f"Guessed letters at this state: {guessed_letters}")  # Debugging
+
+#             # Extract features from the current state and the guessed letters
+#             state_features, current_missed_chars = process_game_state_features_and_missed_chars(
+#                 current_state, char_frequency, max_word_length)
+
+#             guessed_letters_features = torch.tensor(
+#                 encode_guessed_letters(guessed_letters, char_to_idx))
+
+#             # Call the function with the sample data
+#             game_features = extract_hangman_game_features(current_state,
+#                                                           guessed_letters, max_word_length)
+
+#             # Print the extracted game features for inspection
+#             print("Extracted Game Features:", game_features)
+
+#             # Debugging
+#             print(f"Current state features shape: {state_features.shape}")
+#             # Debugging
+#             print(f"Current missed chars shape: {current_missed_chars.shape}")
+#             # Debugging
+#             print(
+#                 f"Guessed letters features shape: {guessed_letters_features.shape}")
+
+#             # Combine the state features and guessed letters features
+#             combined_features = torch.cat(
+#                 [state_features.view(-1), guessed_letters_features])
+#             print(f"Combined features shape for this state: {combined_features.shape}")  # Debugging
+
+#             combined_sequence_features[i] = combined_features
+#             sequence_missed_chars[i] = current_missed_chars
+
+#             print(f"Updated combined sequence features shape: {combined_sequence_features.shape}")  # Debugging
+#             print(f"Updated sequence missed chars shape: {sequence_missed_chars.shape}")  # Debugging
+
+#     # Return the tensors for the entire sequence of game states
+#     return combined_sequence_features, sequence_missed_chars

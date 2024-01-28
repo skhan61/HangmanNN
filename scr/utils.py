@@ -16,6 +16,28 @@ import torch
 from scr.dataset import *
 
 
+def determine_current_state(masked_word, guessed_chars):
+    word_length = len(masked_word)
+    num_revealed_chars = sum(1 for char in masked_word if char != '_')
+    num_guessed_unique_chars = len(set(guessed_chars))
+
+    # Estimate the state based on the number of revealed characters
+    if num_revealed_chars == 0:
+        return "allMasked"
+    elif num_revealed_chars <= 1 and word_length > 4:
+        return "early"
+    elif num_revealed_chars <= num_guessed_unique_chars // 4:
+        return "quarterRevealed"
+    elif num_revealed_chars <= num_guessed_unique_chars // 2:
+        return "midRevealed"
+    elif num_revealed_chars <= 3 * num_guessed_unique_chars // 4:
+        return "midLateRevealed"
+    elif num_revealed_chars < num_guessed_unique_chars:
+        return "lateRevealed"
+    else:
+        return "nearEnd"
+
+
 def calculate_difficulty_score(metrics, weight_win_rate=1.0,
                                weight_miss_penalty=0.5):
     """

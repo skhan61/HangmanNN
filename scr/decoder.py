@@ -33,39 +33,41 @@ class SimpleLSTM(nn.Module):
         self.linear = nn.Linear(linear_input_dim, output_dim)
 
     def forward(self, fets, original_seq_lens, missed_chars):
-        # Debugging print
-        # print("Input features shape:", fets.shape)
-        # print("Original Seq shape: ", original_seq_lens.shape)
-        # print("Missed Chars shape: ", missed_chars.shape)
+        # # Debugging print
+        print("Input features shape:", fets.shape)
+        print("Original Seq shape: ", original_seq_lens.shape)
+        print("Missed Chars shape: ", missed_chars.shape)
 
         # Packing the input sequence
         packed_input = torch.nn.utils.rnn.pack_padded_sequence(
             fets, original_seq_lens.cpu(), batch_first=True, enforce_sorted=False)
-        # print("Packed input shape:", packed_input.data.shape)
+
+        print()
+        print("Packed input shape:", packed_input.data.shape)
 
         # LSTM processing
         packed_output, (hidden, cell) = self.lstm(packed_input)
-        # print("Packed output shape:", packed_output.data.shape)
-        # print("Hidden shape: ", hidden.shape)
+        print("Packed output shape:", packed_output.data.shape)
+        print("Hidden shape: ", hidden.shape)
 
         # Unpacking the sequence
         unpacked_output, _ = torch.nn.utils.rnn.pad_packed_sequence(
             packed_output, batch_first=True)
-        # print("Unpacked output shape:", unpacked_output.shape)
+        print("Unpacked output shape:", unpacked_output.shape)
 
         # Process final hidden state
         hidden = hidden.view(self.num_layers, 2, -1, self.hidden_dim)
         hidden = hidden[-1]
         hidden = hidden.permute(1, 0, 2)
         hidden = hidden.contiguous().view(hidden.shape[0], -1)
-        # print()
-        # print(
-        #    f"Misse character process shape after unpadding: {missed_chars_processed.shape}")
+        print()
+        print(
+           f"Misse character process shape after unpadding: {missed_chars_processed.shape}")
 
-        # print(f"unpacked_output size: {unpacked_output.size(-1)}")
-        # print(f"hidden size: {hidden.size(-1)}")
-        # print(
-        #    f"missed_chars_processed size: {missed_chars_processed.size(-1)}")
+        print(f"unpacked_output size: {unpacked_output.size(-1)}")
+        print(f"hidden size: {hidden.size(-1)}")
+        print(
+           f"missed_chars_processed size: {missed_chars_processed.size(-1)}")
 
         # Process missed characters
         missed_chars_processed = self.miss_linear(missed_chars)

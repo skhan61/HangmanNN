@@ -13,12 +13,36 @@ from tqdm.notebook import tqdm
 # process_single_word, get_missed_characters, char_to_idx, idx_to_char
 from scr.feature_engineering import *
 from scr.guess import *
+from scr.utils import *
 
 # from scr.feature_engineering import (char_to_idx, idx_to_char,
 #                                      process_single_word_inference)
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# def determine_current_state(masked_word, guessed_chars):
+#     word_length = len(masked_word)
+#     num_revealed_chars = sum(1 for char in masked_word if char != '_')
+#     num_guessed_unique_chars = len(set(guessed_chars))
+
+#     # Estimate the state based on the number of revealed characters
+#     if num_revealed_chars == 0:
+#         return "allMasked"
+#     elif num_revealed_chars <= 1 and word_length > 4:
+#         return "early"
+#     elif num_revealed_chars <= num_guessed_unique_chars // 4:
+#         return "quarterRevealed"
+#     elif num_revealed_chars <= num_guessed_unique_chars // 2:
+#         return "midRevealed"
+#     elif num_revealed_chars <= 3 * num_guessed_unique_chars // 4:
+#         return "midLateRevealed"
+#     elif num_revealed_chars < num_guessed_unique_chars:
+#         return "lateRevealed"
+#     else:
+#         return "nearEnd"
+
 
 # mimic api
 
@@ -243,6 +267,7 @@ def simulate_game_progress(model, word, initial_state, char_frequency,
                             if random.random() < correct_guess_chance
                             else random.choice(list(possible_incorrect_guesses))
                             if possible_incorrect_guesses else None)
+                            
         elif outcome_preference == "lose" and possible_incorrect_guesses:
             guessed_char = (random.choice(list(possible_incorrect_guesses))
                             if random.random() > correct_guess_chance

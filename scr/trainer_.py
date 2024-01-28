@@ -217,6 +217,7 @@ class HangmanModel(pl.LightningModule):
 
     def forward(self, fets, original_seq_lens, missed_chars):
         encoded_fets = self.encoder(fets, original_seq_lens, missed_chars)
+        print(f"{encoded_fets.shape}")
         outputs = self.decoder(encoded_fets, original_seq_lens, missed_chars)
         return outputs
 

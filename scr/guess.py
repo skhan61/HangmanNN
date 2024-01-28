@@ -9,77 +9,184 @@ import torch.nn as nn
 
 # process_single_word, get_missed_characters, char_to_idx, idx_to_char
 from scr.feature_engineering import *
+from scr.game import *
+from scr.utils import *
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# def get_random_character():
-#     # Choose from lowercase letters
-#     characters = 'a'  # string.ascii_lowercase  # 'abcdefghijklmnopqrstuvwxyz'
-#     random_char = random.choice(characters)
-#     return random_char
+def get_random_character():
+    # Choose from lowercase letters
+    characters = 'a'  # string.ascii_lowercase  # 'abcdefghijklmnopqrstuvwxyz'
+    random_char = random.choice(characters)
+    return random_char
 
 
-# # # def gues(self, word):
+# # # # def gues(self, word):
+# def guess_character(model, masked_word, char_frequency,
+#                     max_word_length, guessed_chars,
+#                     max_seq_length=1, fallback_strategy=True, device=None):
+
+#     print(f"{guessed_chars}")
+#     """
+#     Guess the next character in the hangman game.
+
+#     Args:
+#         model: Trained RNN model. The neural network model used for character prediction.
+#         masked_word (str): Current state of the word being guessed, represented with '_'
+#         for missing characters. char_frequency (dict): Frequency of each character in the
+#         training set, used to determine the likelihood of each character.
+#         max_word_length (int): Maximum length of words in the training set. This is used to
+#         normalize word lengths in the model. device: The device (CPU/GPU) on which the model is
+#         running, ensuring compatibility and performance optimization.
+#         guessed_chars (set): Set of characters that have already been guessed in the current game.
+#         fallback_strategy (bool): Flag to determine whether to use a fallback strategy or not.
+#         The fallback strategy is used when the model's prediction is uncertain.
+
+#     Returns:
+#         str: The character guessed by the model or the fallback strategy.
+#     """
+#     fets, missed_chars = process_batch_of_games([masked_word],
+#                                                 char_frequency, guessed_chars, max_word_length, max_seq_length=1)
+
+#     # print(f"fets shape form guess character: ", fets.shape)
+#     # print(f"missed character shape: ", missed_chars.shape)
+
+#     seq_lens = torch.tensor(
+#         [fets.size(1)], dtype=torch.long)  # , device=self.device)
+
+#     # fets, missed_chars = fets.to(self.device), missed_chars.to(
+#     #     self.device)  # Move tensors to correct device
+
+#     model.eval()
+
+#     # Move tensors to the same device as the model
+#     device = next(model.parameters()).device
+#     fets = fets.to(device)
+#     missed_chars = missed_chars.to(device)
+
+#     with torch.no_grad():
+#         output = model(fets, seq_lens, missed_chars)
+
+#     # print(f"Output shape: {output.shape}")
+
+#     last_char_position = seq_lens.item() - 1
+#     probabilities = torch.sigmoid(output[0, last_char_position, :])
+#     # probabilities = torch.softmax(output[0, last_char_position, :])
+
+#     # Exclude already guessed characters
+#     guessed_indices = [char_to_idx[char]
+#                        for char in guessed_chars if char in char_to_idx]
+
+#     probabilities[torch.tensor(
+#         guessed_indices, dtype=torch.long, device=device)] = 0
+
+#     best_char_index = torch.argmax(probabilities).item()
+#     # print(best_char_index)
+#     guessed_char = idx_to_char[best_char_index]
+
+#     # Fallback strategy
+#     if fallback_strategy and (guessed_char in guessed_chars or guessed_char == '_'):
+#         for char, _ in sorted(char_frequency.items(), key=lambda x: x[1], reverse=True):
+#             if char not in guessed_chars:
+#                 guessed_char = char
+#                 break
+
+#     return guessed_char
+
+# def guess_character(model, masked_word, char_frequency,
+#                     max_word_length, guessed_chars, max_seq_length=1,
+#                     fallback_strategy=True, device=None):
+
+#     print(f"Guessed characters: {guessed_chars}")
+
+#     # Process the masked word to generate features
+#     fets, missed_chars = process_game_sequence(
+#         [masked_word], [guessed_chars], char_frequency, max_word_length, max_seq_length)
+
+#     # Prepare sequence length for the model
+#     seq_lens = torch.tensor([fets.size(1)], dtype=torch.long)
+
+#     # Set model to evaluation mode
+#     model.eval()
+
+#     # Move tensors to the same device as the model
+#     device = device or next(model.parameters()).device
+#     fets = fets.to(device)
+#     missed_chars = missed_chars.to(device)
+
+#     # Model prediction
+#     with torch.no_grad():
+#         output = model(fets, seq_lens, missed_chars)
+
+#     # Extract probabilities for the last character position
+#     last_char_position = seq_lens.item() - 1
+#     probabilities = torch.sigmoid(output[0, last_char_position, :])
+
+#     # Exclude already guessed characters
+#     guessed_indices = [char_to_idx[char]
+#                        for char in guessed_chars if char in char_to_idx]
+#     probabilities[torch.tensor(
+#         guessed_indices, dtype=torch.long, device=device)] = 0
+
+#     # Get the best character index
+#     best_char_index = torch.argmax(probabilities).item()
+#     guessed_char = idx_to_char[best_char_index]
+
+#     # Fallback strategy
+#     if fallback_strategy and (guessed_char in guessed_chars or guessed_char == '_'):
+#         for char, _ in sorted(char_frequency.items(), key=lambda x: x[1], reverse=True):
+#             if char not in guessed_chars:
+#                 guessed_char = char
+#                 break
+
+#     return guessed_char
+
+
 def guess_character(model, masked_word, char_frequency,
-                    max_word_length, guessed_chars,
-                    max_seq_length=1, fallback_strategy=True, device=None):
-    """
-    Guess the next character in the hangman game.
+                    max_word_length, guessed_chars, max_seq_length=1,
+                    fallback_strategy=True, device=None):
 
-    Args:
-        model: Trained RNN model. The neural network model used for character prediction.
-        masked_word (str): Current state of the word being guessed, represented with '_' 
-        for missing characters. char_frequency (dict): Frequency of each character in the 
-        training set, used to determine the likelihood of each character.
-        max_word_length (int): Maximum length of words in the training set. This is used to 
-        normalize word lengths in the model. device: The device (CPU/GPU) on which the model is 
-        running, ensuring compatibility and performance optimization.
-        guessed_chars (set): Set of characters that have already been guessed in the current game.
-        fallback_strategy (bool): Flag to determine whether to use a fallback strategy or not. 
-        The fallback strategy is used when the model's prediction is uncertain.
+    print(f"Guessed characters: {guessed_chars}")
 
-    Returns:
-        str: The character guessed by the model or the fallback strategy.
-    """
-    fets, missed_chars = process_batch_of_games([masked_word],
-                                                char_frequency, max_word_length, max_seq_length=1)
+    # Process the masked word to generate features
+    # The returned tensors should have an added batch dimension
+    fets, missed_chars = process_game_sequence(
+        [masked_word], [guessed_chars], char_frequency, max_word_length, max_seq_length)
 
-    # print(f"fets shape form guess character: ", fets.shape)
-    # print(f"missed character shape: ", missed_chars.shape)
+    # Ensure batch dimension is added
+    # Add batch dimension, shape becomes [1, seq_len, feature_size]
+    fets = fets.unsqueeze(0)
+    missed_chars = missed_chars.unsqueeze(0)  # Add batch dimension
 
-    seq_lens = torch.tensor(
-        [fets.size(1)], dtype=torch.long)  # , device=self.device)
+    # Prepare sequence length for the model
+    seq_lens = torch.tensor([fets.size(1)], dtype=torch.long)
 
-    # fets, missed_chars = fets.to(self.device), missed_chars.to(
-    #     self.device)  # Move tensors to correct device
-
+    # Set model to evaluation mode
     model.eval()
 
     # Move tensors to the same device as the model
-    device = next(model.parameters()).device
+    device = device or next(model.parameters()).device
     fets = fets.to(device)
     missed_chars = missed_chars.to(device)
 
+    # Model prediction
     with torch.no_grad():
         output = model(fets, seq_lens, missed_chars)
 
-    # print(f"Output shape: {output.shape}")
-
+    # Extract probabilities for the last character position
     last_char_position = seq_lens.item() - 1
     probabilities = torch.sigmoid(output[0, last_char_position, :])
-    # probabilities = torch.softmax(output[0, last_char_position, :])
 
     # Exclude already guessed characters
     guessed_indices = [char_to_idx[char]
                        for char in guessed_chars if char in char_to_idx]
-
     probabilities[torch.tensor(
         guessed_indices, dtype=torch.long, device=device)] = 0
 
+    # Get the best character index
     best_char_index = torch.argmax(probabilities).item()
-    # print(best_char_index)
     guessed_char = idx_to_char[best_char_index]
 
     # Fallback strategy
@@ -90,8 +197,6 @@ def guess_character(model, masked_word, char_frequency,
                 break
 
     return guessed_char
-
-# def gues(self, word):
 
 
 def guess(model, word, char_frequency,
