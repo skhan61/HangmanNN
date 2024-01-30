@@ -226,7 +226,7 @@ def extract_hangman_game_features(current_game_state,
 
     # Critical letter uncover rate: rate at which vowels (critical letters) are uncovered
     critical_letters = 'aeiou'
-    
+
     critical_letter_uncover_rate = sum(
         1 for letter in current_game_state if letter in critical_letters) \
         / len(critical_letters) if critical_letters else 0
@@ -361,7 +361,9 @@ def process_batch_of_games(guessed_states_batch, guessed_letters_batch,
     for game_states, guessed_letters in zip(guessed_states_batch, guessed_letters_batch):
         # Process each game sequence with all necessary parameters, including max_seq_length
         features, missed_chars = process_game_sequence(
-            game_states, guessed_letters, char_frequency, max_word_length, max_seq_length
+            game_states, guessed_letters,
+            char_frequency, max_word_length, 
+            max_seq_length
         )
 
         batch_features.append(features)

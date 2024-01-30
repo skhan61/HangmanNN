@@ -46,6 +46,46 @@ class HangmanModel(pl.LightningModule):
         self.validation_epoch_metrics = defaultdict(float)
         self.granular_miss_penalty_stats = defaultdict(list)
 
+    def configure_optimizers(self):
+        optimizer = Adam(self.parameters(), lr=self.learning_rate)
+
+        # Calculate steps per epoch
+        dataset_size = len(self.trainer.datamodule.train_dataloader().dataset)
+        batch_size = self.trainer.datamodule.train_dataloader().batch_size
+        steps_per_epoch = max(dataset_size // batch_size,
+                              1)  # Avoid division by zero
+
+        # Calculate total steps
+        total_steps = self.trainer.max_epochs * steps_per_epoch
+        if total_steps <= 0:
+            raise ValueError("Total steps must be a positive integer.")
+
+        scheduler = {
+            'scheduler': OneCycleLR(optimizer,
+                                    max_lr=self.learning_rate,
+                                    total_steps=total_steps),
+            'interval': 'step'
+        }
+
+        return [optimizer], [scheduler]
+
+    # def configure_optimizers(self):
+    #     optimizer = AdamW(self.parameters(), lr=self.learning_rate)
+
+    #     scheduler = ReduceLROnPlateau(
+    #         optimizer, mode='min', factor=0.01, patience=3, verbose=True)
+
+    #     return {
+    #         'optimizer': optimizer,
+    #         'lr_scheduler': {
+    #             'scheduler': scheduler,
+    #             'monitor': 'val_miss_penalty', # 'miss_penalty_step',  # Metric to monitor
+    #             'interval': 'step',  # The scheduler will check the metric every epoch
+    #             'frequency': 1,  # How frequently to check the metric
+    #             'reduce_on_plateau': True  # This is specific to ReduceLROnPlateau
+    #         }
+    #     }
+
     def validation_step(self, batch, batch_idx):
         states = batch['guessed_states']
         guesses = batch['guessed_letters']
@@ -189,44 +229,6 @@ class HangmanModel(pl.LightningModule):
         # Return the collected statistics
         return {'win_rate': win_rate, 'attempts': attempts,
                 'length_wise_stats': length_wise_stats}
-
-    def configure_optimizers(self):
-        optimizer = Adam(self.parameters(), lr=self.learning_rate)
-
-        # Calculate steps per epoch
-        dataset_size = len(self.trainer.datamodule.train_dataloader().dataset)
-        batch_size = self.trainer.datamodule.train_dataloader().batch_size
-        steps_per_epoch = max(dataset_size // batch_size,
-                              1)  # Avoid division by zero
-
-        # Calculate total steps
-        total_steps = self.trainer.max_epochs * steps_per_epoch
-        if total_steps <= 0:
-            raise ValueError("Total steps must be a positive integer.")
-
-        scheduler = {
-            'scheduler': OneCycleLR(optimizer, max_lr=self.learning_rate, total_steps=total_steps),
-            'interval': 'step'
-        }
-
-        return [optimizer], [scheduler]
-
-    # def configure_optimizers(self):
-    #     optimizer = AdamW(self.parameters(), lr=self.learning_rate)
-
-    #     scheduler = ReduceLROnPlateau(
-    #         optimizer, mode='min', factor=0.01, patience=3, verbose=True)
-
-    #     return {
-    #         'optimizer': optimizer,
-    #         'lr_scheduler': {
-    #             'scheduler': scheduler,
-    #             'monitor': 'val_miss_penalty', # 'miss_penalty_step',  # Metric to monitor
-    #             'interval': 'step',  # The scheduler will check the metric every epoch
-    #             'frequency': 1,  # How frequently to check the metric
-    #             'reduce_on_plateau': True  # This is specific to ReduceLROnPlateau
-    #         }
-    #     }
 
     def forward(self, fets, original_seq_lens, missed_chars):
         encoded_fets = self.encoder(fets, original_seq_lens, missed_chars)

@@ -153,7 +153,8 @@ def guess_character(model, masked_word, char_frequency,
     # Process the masked word to generate features
     # The returned tensors should have an added batch dimension
     fets, missed_chars = process_game_sequence(
-        [masked_word], [guessed_chars], char_frequency, max_word_length, max_seq_length)
+        [masked_word], [guessed_chars],
+        char_frequency, max_word_length, max_seq_length)
 
     # Ensure batch dimension is added
     # Add batch dimension, shape becomes [1, seq_len, feature_size]
