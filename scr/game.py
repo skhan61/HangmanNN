@@ -69,8 +69,12 @@ def play_game_with_a_word(model, word, char_frequency,
         guessed_char = guess(model, masked_word, char_frequency,
                              max_word_length, guessed_letters)
 
-        # Add to the list of guessed letters
-        guessed_letters.append(guessed_char)
+        # # Add to the list of guessed letters
+        # guessed_letters.append(guessed_char)
+
+        # Add the new guess to the guessed letters list
+        if guessed_char not in guessed_letters:
+            guessed_letters.append(guessed_char)
 
         masked_word = update_word_state(word, masked_word, guessed_char)
 

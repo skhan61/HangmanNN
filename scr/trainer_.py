@@ -52,9 +52,21 @@ class HangmanModel(pl.LightningModule):
         max_seq_length = batch['max_seq_len']
         original_seq_lengths = batch['original_seq_lengths']
 
-        # Process the batch
+        # print(f"{batch}")
+
+        # # Print debug information
+        # print("DEBUG INFO:")
+        # print(f"Miss Penalty: {miss_penalty}")
+        # print(f"Type of Miss Penalty: {type(miss_penalty)}")
+        # print(f"Batch Word Lengths: {batch['word_length']}")
+        # print(f"Batch Difficulties: {batch['difficulty']}")
+        # print(f"Batch Outcomes: {batch['outcome']}")
+        # print(f"Batch Won Flags: {batch['won']}")
+
         batch_features, batch_missed_chars = process_batch_of_games(
-            states, self.char_frequency, self.max_word_length, max_seq_length)
+            states, guesses, self.char_frequency,
+            self.max_word_length,
+            max_seq_length)
 
         original_seq_lengths_tensor = torch.tensor(original_seq_lengths,
                                                    dtype=torch.long,
@@ -83,7 +95,8 @@ class HangmanModel(pl.LightningModule):
 
         # Update the validation_epoch_metrics dictionary
         self.validation_epoch_metrics['validation_epoch_loss_sum'] += loss.item()
-        self.validation_epoch_metrics['validation_epoch_miss_penalty_sum'] += miss_penalty.item()
+        self.validation_epoch_metrics['validation_epoch_miss_penalty_sum'] \
+            += miss_penalty.item()
 
         # Initialize accumulator for granular statistics based on word length
         if not hasattr(self, 'granular_miss_penalty_stats'):
@@ -217,7 +230,7 @@ class HangmanModel(pl.LightningModule):
 
     def forward(self, fets, original_seq_lens, missed_chars):
         encoded_fets = self.encoder(fets, original_seq_lens, missed_chars)
-        print(f"{encoded_fets.shape}")
+        # print(f"{encoded_fets.shape}")
         outputs = self.decoder(encoded_fets, original_seq_lens, missed_chars)
         return outputs
 
@@ -226,6 +239,8 @@ class HangmanModel(pl.LightningModule):
         guesses = batch['guessed_letters']
         max_seq_length = batch['max_seq_len']
         original_seq_lengths = batch['original_seq_lengths']
+
+        # print(f"{batch}")
 
         # # Print debug information
         # print("DEBUG INFO:")
@@ -237,7 +252,7 @@ class HangmanModel(pl.LightningModule):
         # print(f"Batch Won Flags: {batch['won']}")
 
         batch_features, batch_missed_chars = process_batch_of_games(
-            states, self.char_frequency,
+            states, guesses, self.char_frequency,
             self.max_word_length,
             max_seq_length)
 

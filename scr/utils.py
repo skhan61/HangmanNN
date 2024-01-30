@@ -41,6 +41,7 @@ def determine_current_state(masked_word, guessed_chars):
 def calculate_difficulty_score(metrics, weight_win_rate=1.0,
                                weight_miss_penalty=0.5):
     """
+
     Calculates the difficulty score based on win rate and miss penalty.
 
     :param metrics: Dictionary containing 'performance_wins' and 'miss_penalty_avg'.
@@ -62,6 +63,7 @@ def calculate_difficulty_score(metrics, weight_win_rate=1.0,
         incorrect guesses for this word.
     - Difficulty Score: 1.5 - This score suggests 
         that the word is highly challenging for players.
+        
     """
     # Extracting the metrics
     win_rate = metrics.get('performance_wins', 0)

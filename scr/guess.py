@@ -148,7 +148,7 @@ def guess_character(model, masked_word, char_frequency,
                     max_word_length, guessed_chars, max_seq_length=1,
                     fallback_strategy=True, device=None):
 
-    print(f"Guessed characters: {guessed_chars}")
+    # print(f"Guessed characters: {guessed_chars}")
 
     # Process the masked word to generate features
     # The returned tensors should have an added batch dimension
@@ -190,8 +190,10 @@ def guess_character(model, masked_word, char_frequency,
     guessed_char = idx_to_char[best_char_index]
 
     # Fallback strategy
-    if fallback_strategy and (guessed_char in guessed_chars or guessed_char == '_'):
-        for char, _ in sorted(char_frequency.items(), key=lambda x: x[1], reverse=True):
+    if fallback_strategy and (guessed_char in guessed_chars
+                              or guessed_char == '_'):
+        for char, _ in sorted(char_frequency.items(),
+                              key=lambda x: x[1], reverse=True):
             if char not in guessed_chars:
                 guessed_char = char
                 break
@@ -206,7 +208,7 @@ def guess(model, word, char_frequency,
 
     cleaned_word = "".join(char.lower()
                            for char in word if char.isalpha() or char == '_')
-    # print(cleaned_word)
+    # print(f"State {cleaned_word}")
 
     # Predict the next character using the updated guess_character function
     guessed_char = guess_character(
@@ -221,5 +223,7 @@ def guess(model, word, char_frequency,
     # Add the new guess to the guessed letters list
     if guessed_char not in guessed_letters:
         guessed_letters.append(guessed_char)
+
+    # print(f"Print gussed letters: {guessed_letters}")
 
     return guessed_char
