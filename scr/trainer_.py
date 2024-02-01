@@ -9,7 +9,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 from model import SimpleLSTM
 from sklearn.metrics import accuracy_score, f1_score
-from torch.optim import Adam, AdamW
+from torch.optim import SGD, Adam, AdamW, RMSprop
 from torch.optim.lr_scheduler import OneCycleLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
@@ -20,9 +20,17 @@ from scr.utils import *
 
 
 class HangmanModel(pl.LightningModule):
-    def __init__(self, encoder, decoder, learning_rate, char_frequency,
-                 max_word_length, l1_factor=0.01, l2_factor=0.01,
+    def __init__(self,
+                 encoder,
+                 decoder,
+                 learning_rate,
+                 char_frequency,
+                 max_word_length,
+                 optimizer_type='Adam',
+                 l1_factor=0.01,
+                 l2_factor=0.01,
                  test_words=None):
+
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -46,14 +54,25 @@ class HangmanModel(pl.LightningModule):
         self.validation_epoch_metrics = defaultdict(float)
         self.granular_miss_penalty_stats = defaultdict(list)
 
+        self.optimizer_type = optimizer_type  # New parameter for optimizer type
+
     def configure_optimizers(self):
-        optimizer = Adam(self.parameters(), lr=self.learning_rate)
+        if self.optimizer_type == 'Adam':
+            optimizer = Adam(self.parameters(), lr=self.learning_rate)
+        elif self.optimizer_type == 'AdamW':
+            optimizer = SGD(self.parameters(), lr=self.learning_rate)
+        elif self.optimizer_type == 'SGD':
+            optimizer = SGD(self.parameters(), lr=self.learning_rate)
+        elif self.optimizer_type == 'RMSprop':
+            optimizer = RMSprop(self.parameters(), lr=self.learning_rate)
+        else:
+            raise ValueError(
+                f"Unsupported optimizer type: {self.optimizer_type}")
 
         # Calculate steps per epoch
         dataset_size = len(self.trainer.datamodule.train_dataloader().dataset)
         batch_size = self.trainer.datamodule.train_dataloader().batch_size
-        steps_per_epoch = max(dataset_size // batch_size,
-                              1)  # Avoid division by zero
+        steps_per_epoch = max(dataset_size // batch_size, 1)  # Avoid division by zero
 
         # Calculate total steps
         total_steps = self.trainer.max_epochs * steps_per_epoch
@@ -138,6 +157,18 @@ class HangmanModel(pl.LightningModule):
         self.validation_epoch_metrics['validation_epoch_miss_penalty_sum'] \
             += miss_penalty.item()
 
+        # Initialize accumulator for granular statistics based on sequence length
+        if not hasattr(self, 'granular_seq_len_miss_penalty_stats'):
+            self.granular_seq_len_miss_penalty_stats = defaultdict(list)
+
+        # Calculate miss penalty for each batch item
+        for i in range(outputs.size(0)):
+            item_miss_penalty = self.calculate_miss_penalty(
+                outputs[i], batch_missed_chars[i], original_seq_lengths_tensor[i])
+            seq_len = original_seq_lengths[i]
+            self.granular_seq_len_miss_penalty_stats[seq_len].append(
+                item_miss_penalty.item())
+
         # Initialize accumulator for granular statistics based on word length
         if not hasattr(self, 'granular_miss_penalty_stats'):
             self.granular_miss_penalty_stats = defaultdict(list)
@@ -180,36 +211,60 @@ class HangmanModel(pl.LightningModule):
             if penalties:
                 avg_penalty = sum(penalties) / len(penalties)
                 length_wise_stats[f'miss_penalty_{length}'] = avg_penalty
-                # Log the average penalty for each word length
-                self.log(f'validation_miss_penalty_avg_{length}', avg_penalty,
-                         on_step=False, on_epoch=True, prog_bar=False)
+                # # Log the average penalty for each word length
+                # self.log(f'validation_miss_penalty_avg_{length}', avg_penalty,
+                #          on_step=False, on_epoch=True, prog_bar=False)
 
-        performance_dict = {
-            'length_wise_performance_stats': length_wise_stats,
-            'granular_miss_penalty_stats': self.granular_miss_penalty_stats
-        }
+        # Prepare for aggregating sequence length-wise stats
+        seq_length_wise_stats = {}
+        for seq_length, penalties in self.granular_seq_len_miss_penalty_stats.items():
+            if penalties:
+                avg_penalty = sum(penalties) / len(penalties)
+                seq_length_wise_stats[f'miss_penalty_seq_len_{seq_length}'] = avg_penalty
+                # Log the average penalty for each sequence length
+                # self.log(f'validation_miss_penalty_avg_seq_len_{seq_length}', avg_penalty,
+                #          on_step=False, on_epoch=True, prog_bar=False)
 
-        # Flattening the nested dictionary
-        flattened_data = flatten_dict(performance_dict)
+        # Initialize an empty dictionary to hold all performance stats
+        performance_stats = {}
 
-        # Reorganizing the data by word length
-        aggregated_metrics = reorganize_by_word_length(flattened_data)
+        # Assume length_wise_stats and seq_length_wise_stats are already populated dictionaries
+        # with length-wise performance and sequence length-wise miss penalty stats respectively
 
-        # Flattening the organized data for logging
-        loggable_data_aggregated_metrics = flatten_for_logging(
-            aggregated_metrics)
+        for word_length, metrics in length_wise_stats.items():
+            # Check if metrics is a dictionary
+            if isinstance(metrics, dict):
+                for metric_name, value in metrics.items():
+                    key = f"length_{word_length}_{metric_name}"
+                    performance_stats[key] = value
+            else:
+                # Handle the case where metrics is not a dictionary (e.g., a float)
+                # Assuming the float value represents total games
+                key = f"length_{word_length}"
+                performance_stats[key] = metrics
 
-        # Log each item in the flattened data
-        for key, value in loggable_data_aggregated_metrics.items():
-            if isinstance(value, (int, float)):
-                self.log(key, value, on_step=False, on_epoch=True)
 
-        # Update the data module's sampler with new performance metrics, if applicable
+        # Process seq_length_wise_stats
+        for original_key, value in seq_length_wise_stats.items():
+            seq_length = original_key.split('_')[-1]
+            # Construct a new key for the performance_stats dictionary
+            new_key = f"seq_length_{seq_length}_miss_penalty"
+
+            # Assign the float value to the new key in the performance_stats dictionary
+            performance_stats[new_key] = value
+
+        for key, value in performance_stats.items():
+            self.log(key, value, on_step=False, on_epoch=True, prog_bar=False)
+
+        seq_len_stats = reorganize_and_aggregate_metrics(
+            performance_stats)
+
+        # # Update the data module's sampler with new performance metrics, if applicable
         if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
             self.trainer.datamodule.update_performance_metrics(
-                aggregated_metrics)
+                seq_len_stats)
 
-        return {'aggregated_metric': aggregated_metrics}
+        return performance_stats
 
     def evaluate_and_log(self):
         # Ensure the model is in evaluation mode

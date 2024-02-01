@@ -191,8 +191,10 @@ def guess_character(model, masked_word, char_frequency,
     guessed_char = idx_to_char[best_char_index]
 
     # Fallback strategy
+    # if fallback_strategy and (guessed_char in guessed_chars
+    #                           or guessed_char == '_'):
     if fallback_strategy and (guessed_char in guessed_chars
-                              or guessed_char == '_'):
+                              or guessed_char == '_' or guessed_char == ''):
         for char, _ in sorted(char_frequency.items(),
                               key=lambda x: x[1], reverse=True):
             if char not in guessed_chars:

@@ -1,91 +1,62 @@
 import os
 import random
 from collections import OrderedDict, defaultdict
+from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
 import torch
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
 from scr.feature_engineering import *
 
 
 class HangmanDataset(Dataset):
-    def __init__(self, parquet_files):
-        self.parquet_files = parquet_files if isinstance(
-            parquet_files, list) else [parquet_files]
-        self.pair_index = defaultdict(list)
-        self.word_length_index = defaultdict(list)  # New attribute
+    def __init__(self, parquet_path_or_files, indices=None):
+        # Handle both a single path (str or Path) and a list of Path objects
+        if isinstance(parquet_path_or_files, list):
+            self.parquet_files = [Path(file) if not isinstance(
+                file, Path) else file for file in parquet_path_or_files]
+        elif Path(parquet_path_or_files).is_dir():
+            self.parquet_files = list(
+                Path(parquet_path_or_files).glob('*.parquet'))
+        else:
+            self.parquet_files = [Path(parquet_path_or_files)]
+
+        # print(len(self.parquet_files))
+        self.seq_len_index = defaultdict(list)
         self.total_length = 0
-        self.build_pair_index()
+        if indices is not None:
+            self.seq_len_index = indices
+            self.total_length = sum(len(v)
+                                    for v in self.seq_len_index.values())
+        else:
+            self.build_seq_len_index()
 
-    def build_pair_index(self):
-        self.word_length_index = defaultdict(
-            list)  # Initialize word length index
-
+    def build_seq_len_index(self):
         for file_idx, file in enumerate(self.parquet_files):
             df = pd.read_parquet(file)
             for local_idx, row in df.iterrows():
-                difficulty_outcome_key = (row['difficulty'], row['outcome'])
-                word_length_key = row['word_length']
-                self.pair_index[difficulty_outcome_key].append(
-                    (file_idx, local_idx))
-                self.word_length_index[word_length_key].append(
-                    (file_idx, local_idx))
-
+                seq_len_key = len(row['guessed_states'].split(','))
+                self.seq_len_index[seq_len_key].append((file_idx, local_idx))
         self.total_length = sum(len(indices)
-                                for indices in self.pair_index.values())
+                                for indices in self.seq_len_index.values())
 
-    def rebuild_pair_index(self, target_pairs):
-        new_pair_index = defaultdict(list)
-        new_word_length_index = defaultdict(list)
-
-        target_difficulty_outcomes = {
-            pair for pair in target_pairs if len(pair) == 2}
-        target_word_lengths = {pair[0]
-                               for pair in target_pairs if len(pair) == 1}
-
-        for file_idx, file in enumerate(self.parquet_files):
-            df = pd.read_parquet(file)
-            for local_idx, row in df.iterrows():
-                difficulty_outcome_key = (row['difficulty'], row['outcome'])
-                word_length_key = row['word_length']
-
-                if difficulty_outcome_key in target_difficulty_outcomes \
-                        or word_length_key in target_word_lengths:
-                    new_pair_index[difficulty_outcome_key].append(
-                        (file_idx, local_idx))
-                    new_word_length_index[word_length_key].append(
-                        (file_idx, local_idx))
-
-        self.pair_index = new_pair_index
-        self.word_length_index = new_word_length_index
-        self.total_length = sum(len(indices)
-                                for indices in new_pair_index.values())
+    def rebuild_seq_len_index(self):
+        self.seq_len_index = defaultdict(list)  # Reset the index
+        self.total_length = 0  # Reset the total length
+        self.build_seq_len_index()  # Rebuild the index using the existing method
 
     def __len__(self):
         return self.total_length
 
     def __getitem__(self, idx):
-
-        if isinstance(idx, tuple) and len(idx) == 4:
-            # Tuple-based indexing for difficulty, outcome, file index, and local index
-            difficulty, outcome, file_idx, local_idx = idx
-
-        elif isinstance(idx, tuple) and len(idx) == 1 and isinstance(idx[0], int):
-            # Tuple-based indexing for word length and index
-            word_length = idx[0]
-            if word_length in self.word_length_index and self.word_length_index[word_length]:
-                file_idx, local_idx = random.choice(
-                    self.word_length_index[word_length])
-            else:
-                raise IndexError(
-                    "No data available for the given word length.")
-
+        if isinstance(idx, tuple) and len(idx) == 2:
+            file_idx, local_idx = idx
         elif isinstance(idx, int):
-            # Integer-based indexing; retrieve a random sample from the entire dataset
-            if self.total_length > 0 and 0 <= idx < self.total_length:
-                for _, indices in self.pair_index.items():
+            if 0 <= idx < self.total_length:
+                for seq_len, indices in self.seq_len_index.items():
                     if idx < len(indices):
                         file_idx, local_idx = indices[idx]
                         break
@@ -116,76 +87,123 @@ class HangmanDataset(Dataset):
             'won': row['won'] == 'True'
         }
 
-    def get_group_info(self):
-        """
-        Returns the number of samples for each (difficulty, outcome) pair.
-        """
-        return {key: len(indices) for key, indices in self.pair_index.items()}
+    def split(self, test_size=0.2):
+        train_indices = defaultdict(list)
+        valid_indices = defaultdict(list)
 
-    def get_all_group_labels(self):
-        """
-        Returns a list of all unique group labels (difficulty, outcome) 
-        and unique word lengths in the dataset.
-        """
-        group_labels = set()
-        word_lengths = set()
-        for file in self.parquet_files:
-            df = pd.read_parquet(file)
-            for _, row in df.iterrows():
-                group_label = (row['difficulty'], row['outcome'])
-                group_labels.add(group_label)
-                word_lengths.add(row['word_length'])
-        return list(group_labels), list(word_lengths)
+        for seq_len, indices in self.seq_len_index.items():
+            train_idx, valid_idx = train_test_split(
+                indices, test_size=test_size, random_state=42)
+            train_indices[seq_len].extend(train_idx)
+            valid_indices[seq_len].extend(valid_idx)
 
-# ================================================
-# class HangmanDataset(Dataset):
+        train_dataset = HangmanDataset(
+            self.parquet_files, indices=train_indices)
+        valid_dataset = HangmanDataset(
+            self.parquet_files, indices=valid_indices)
+
+        return train_dataset, valid_dataset
+
+    def flat_index_to_tuple(self, flat_index):
+        cumulative_count = 0
+        for seq_len, indices in self.seq_len_index.items():
+            if cumulative_count + len(indices) > flat_index:
+                local_index = flat_index - cumulative_count
+                # Assumes indices are stored as (file_index, data_index) tuples
+                return indices[local_index]
+            cumulative_count += len(indices)
+        raise IndexError("Flat index out of range.")
+
+
+# class HangmanDataset(Datase):
 #     def __init__(self, parquet_files):
 #         self.parquet_files = parquet_files if isinstance(
 #             parquet_files, list) else [parquet_files]
 #         self.pair_index = defaultdict(list)
+#         self.word_length_index = defaultdict(list)
+#         self.seq_len_index = defaultdict(list)
 #         self.total_length = 0
 #         self.build_pair_index()
 
 #     def build_pair_index(self):
 #         for file_idx, file in enumerate(self.parquet_files):
 #             df = pd.read_parquet(file)
-#             grouped = df.groupby(['difficulty', 'outcome']).apply(
-#                 lambda x: list(x.index))
-#             for key, indices in grouped.items():
-#                 self.pair_index[key].extend(
-#                     [(file_idx, local_idx) for local_idx in indices])
+#             for local_idx, row in df.iterrows():
+#                 difficulty_outcome_key = (row['difficulty'], row['outcome'])
+#                 word_length_key = row['word_length']
+#                 seq_len_key = len(row['guessed_states'].split(','))
+
+#                 self.pair_index[difficulty_outcome_key].append(
+#                     (file_idx, local_idx))
+#                 self.word_length_index[word_length_key].append(
+#                     (file_idx, local_idx))
+#                 self.seq_len_index[seq_len_key].append((file_idx, local_idx))
+
 #         self.total_length = sum(len(indices)
 #                                 for indices in self.pair_index.values())
 
 #     def rebuild_pair_index(self, target_pairs):
-#         """
-#         Rebuilds the pair index based on the specified target pairs.
-#         """
-#         new_pair_index = defaultdict(list)
+#         # Reinitialize indices
+#         self.pair_index = defaultdict(list)
+#         self.word_length_index = defaultdict(list)
+#         self.seq_len_index = defaultdict(list)
+
+#         # # Debug: Print the start of index rebuilding
+#         # print("Rebuilding indices...")
+
+#         # Rebuild the indices based on target pairs
 #         for file_idx, file in enumerate(self.parquet_files):
 #             df = pd.read_parquet(file)
 #             for local_idx, row in df.iterrows():
-#                 key = (row['difficulty'], row['outcome'])
-#                 if key in target_pairs:
-#                     new_pair_index[key].append((file_idx, local_idx))
+#                 difficulty_outcome_key = (row['difficulty'], row['outcome'])
+#                 word_length_key = row['word_length']
+#                 seq_len_key = len(row['guessed_states'].split(','))
 
-#         self.pair_index = new_pair_index
+#                 # Check if the current row matches any of the target pairs
+#                 if any(word_length_key == pair[1] for pair in target_pairs if pair[0] == 'word_len'):
+#                     self.word_length_index[word_length_key].append(
+#                         (file_idx, local_idx))
+#                     # print(
+#                     #     f"Indexing word length {word_length_key} at ({file_idx}, {local_idx})")
+
+#         # Update the total length of the dataset
 #         self.total_length = sum(len(indices)
 #                                 for indices in self.pair_index.values())
+
+#         # # Debug: Print completion of index rebuilding
+#         # print("Index rebuilding complete.")
 
 #     def __len__(self):
 #         return self.total_length
 
 #     def __getitem__(self, idx):
-#         if isinstance(idx, tuple):
-#             difficulty, outcome, file_idx, local_idx = idx
+#         if isinstance(idx, tuple) and len(idx) == 4:
+#             # Tuple-based indexing for difficulty, outcome, file index, and local index
+#             _, _, file_idx, local_idx = idx
+#         elif isinstance(idx, tuple) and len(idx) == 2:
+#             length_type, length_value = idx
+#             if length_type == 'seq_len':
+#                 index = self.seq_len_index
+#             elif length_type == 'word_len':
+#                 index = self.word_length_index
+#             else:
+#                 raise ValueError(
+#                     "Invalid length type. Must be 'seq_len' or 'word_len'.")
+
+#             if length_value in index and index[length_value]:
+#                 file_idx, local_idx = random.choice(index[length_value])
+#             else:
+#                 raise IndexError(
+#                     f"No data available for the given {length_type}.")
 #         elif isinstance(idx, int):
-#             idx_copy = idx
-#             for key, indices in self.pair_index.items():
-#                 if idx_copy < len(indices):
-#                     file_idx, local_idx = indices[idx_copy]
-#                     break
-#                 idx_copy -= len(indices)
+#             if 0 <= idx < self.total_length:
+#                 for indices in self.pair_index.values():
+#                     if idx < len(indices):
+#                         file_idx, local_idx = indices[idx]
+#                         break
+#                     idx -= len(indices)
+#             else:
+#                 raise IndexError("Index out of range.")
 #         else:
 #             raise ValueError(
 #                 "Invalid index type. Must be a tuple or an integer.")
@@ -211,28 +229,23 @@ class HangmanDataset(Dataset):
 #         }
 
 #     def get_group_info(self):
-#         """
-#         Returns the number of samples for each (difficulty, outcome) pair.
-#         """
 #         return {key: len(indices) for key, indices in self.pair_index.items()}
 
 #     def get_all_group_labels(self):
-#         """
-#         Returns a list of all group labels (word_length, difficulty, outcome) in the dataset.
-#         """
-#         group_labels = []
+#         group_labels = set()
+#         word_lengths = set()
 #         for file in self.parquet_files:
 #             df = pd.read_parquet(file)
-#             for _, row in df.iterrows():
-#                 group_label = (row['difficulty'], row['outcome'])
-#                 group_labels.append(group_label)
-#         return group_labels
-
-#     def get_group_info(self):
-#         return {key: len(indices) for key, indices in self.pair_index.items()}
+#             group_labels.update((row['difficulty'], row['outcome'])
+#                                 for row in df.itertuples())
+#             word_lengths.update(df['word_length'])
+#         return list(group_labels), list(word_lengths)
 
 
 def new_custom_collate_fn(batch):
+
+    # print(f"Batch size before processing: {len(batch)}")  # Debugging print
+
     max_seq_len = max(len(item['guessed_states']) for item in batch)
 
     # Preallocate arrays with maximum sequence length
@@ -264,7 +277,6 @@ def new_custom_collate_fn(batch):
         'outcome': outcomes,
         'word_length': word_lengths,
         'won': won_flags,
-        'game_id': game_ids,
         'initial_state': initial_states,
         'final_state': final_states,
         'game_state': game_states

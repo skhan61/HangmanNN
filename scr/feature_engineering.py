@@ -21,6 +21,19 @@ game_states = ['allMasked', 'early', 'quarterRevealed', 'midRevealed',
 game_state_to_idx = {state: idx for idx, state in enumerate(game_states)}
 
 
+# Function to convert batch tensor to missed characters
+def batch_to_chars(batch):
+    from scr.feature_engineering import idx_to_char
+    missed_chars = []
+    for sample in batch:
+        chars = ''
+        for idx, char_present in enumerate(sample[0]):
+            if char_present == 0:
+                chars += idx_to_char[idx]
+        missed_chars.append(chars)
+    return missed_chars
+
+
 def encode_word(word):
     # print(word)
     return [char_to_idx[char] for char in word]
@@ -207,7 +220,8 @@ def extract_hangman_game_features(current_game_state,
     # Initial letter reveal: 1 if the first letter is correctly guessed, 0 otherwise
     # initial_letter_reveal = 1 if current_game_state[0] != '_' else 0
 
-    # def extract_hangman_game_features(current_game_state, cumulative_guessed_letters, maximum_word_length):
+    # def extract_hangman_game_features(current_game_state, cumulative_guessed_letters, \
+    # maximum_word_length):
     # # Print the current game state for debugging
     # print(f"Current game state: '{current_game_state}'")
     # print(f"Cumulative guessed letters: {cumulative_guessed_letters}")
@@ -310,6 +324,9 @@ def process_game_sequence(game_states, guessed_letters_sequence,
     sequence_features = []
     missed_chars_tensors = []
 
+    # Capture the original sequence length
+    original_seq_len = len(game_states)
+
     for i, state in enumerate(game_states):
         if i >= max_seq_length:
             break
@@ -327,7 +344,12 @@ def process_game_sequence(game_states, guessed_letters_sequence,
 
         # Combine flattened character features and game features
         combined_features = torch.cat([flattened_char_features, game_features])
-        sequence_features.append(combined_features)
+
+        # Append the original sequence length as an additional feature
+        combined_features_with_seq_len = torch.cat(
+            [combined_features, torch.tensor([original_seq_len], dtype=torch.float)])
+
+        sequence_features.append(combined_features_with_seq_len)
 
         # Extract and store missed characters for the current state
         # Assuming this function is defined
@@ -340,7 +362,8 @@ def process_game_sequence(game_states, guessed_letters_sequence,
 
     # Ensure the tensor shape matches the expected output dimensions
     expected_shape = (min(max_seq_length, len(game_states)),
-                      flattened_char_features.shape[0] + game_features.shape[0])
+                      flattened_char_features.shape[0] + game_features.shape[0] + 1)
+    # +1 for the original sequence length
 
     assert sequence_tensor.shape == expected_shape, \
         f"Sequence tensor shape {sequence_tensor.shape} \
@@ -362,7 +385,7 @@ def process_batch_of_games(guessed_states_batch, guessed_letters_batch,
         # Process each game sequence with all necessary parameters, including max_seq_length
         features, missed_chars = process_game_sequence(
             game_states, guessed_letters,
-            char_frequency, max_word_length, 
+            char_frequency, max_word_length,
             max_seq_length
         )
 
@@ -407,6 +430,50 @@ def pad_and_reshape_labels(guesses, max_seq_length,
     one_hot_labels = F.one_hot(padded_labels, num_classes=num_classes).float()
 
     return one_hot_labels
+
+
+# def process_game_sequence(game_states, guessed_letters_sequence,
+#                           char_frequency, max_word_length, max_seq_length):
+#     sequence_features = []
+#     missed_chars_tensors = []
+
+#     for i, state in enumerate(game_states):
+#         if i >= max_seq_length:
+#             break
+
+#         # Extract character features for the current state
+#         char_features = extract_char_features_from_state(
+#             state, char_frequency, max_word_length)
+#         # Flatten the character features
+#         flattened_char_features = char_features.view(-1)
+
+#         # Extract game features for the current state
+#         cumulative_guessed_letters = guessed_letters_sequence[:i + 1]
+#         game_features = extract_hangman_game_features(
+#             state, cumulative_guessed_letters, max_word_length)
+
+#         # Combine flattened character features and game features
+#         combined_features = torch.cat([flattened_char_features, game_features])
+#         sequence_features.append(combined_features)
+
+#         # Extract and store missed characters for the current state
+#         # Assuming this function is defined
+#         missed_chars = get_missed_characters(state)
+#         missed_chars_tensors.append(missed_chars)
+
+#     # Stack all game state features to form the sequence tensor
+#     sequence_tensor = torch.stack(sequence_features)
+#     missed_chars_tensor = torch.stack(missed_chars_tensors)
+
+#     # Ensure the tensor shape matches the expected output dimensions
+#     expected_shape = (min(max_seq_length, len(game_states)),
+#                       flattened_char_features.shape[0] + game_features.shape[0])
+
+#     assert sequence_tensor.shape == expected_shape, \
+#         f"Sequence tensor shape {sequence_tensor.shape} \
+#         does not match expected shape {expected_shape}"
+
+#     return sequence_tensor, missed_chars_tensor
 
 
 # Note: The functions extract_char_features_from_state, extract_hangman_game_features, and get_missed_characters need to be defined.
@@ -731,10 +798,8 @@ def pad_and_reshape_labels(guesses, max_seq_length,
 
 # state_fets, state_miss_char = process_game_sequence(game_states, char_frequency,
 #                           max_word_length, max_seq_length)
-
 # print(f'state fets shape: ', state_fets.shape)
 # print(f'state_miss_chars shape: ', state_miss_char.shape)
-
 # print()
 # # Process the dummy batch
 # batch_features, batch_missed_chars = process_batch_of_games(

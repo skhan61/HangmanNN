@@ -1,6 +1,7 @@
 import collections
 import pickle
 import random
+import re
 from collections import defaultdict
 from collections.abc import MutableMapping
 from datetime import datetime
@@ -12,6 +13,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+from torch.utils.data import Dataset, Subset
 
 from scr.dataset import *
 
@@ -63,7 +65,7 @@ def calculate_difficulty_score(metrics, weight_win_rate=1.0,
         incorrect guesses for this word.
     - Difficulty Score: 1.5 - This score suggests 
         that the word is highly challenging for players.
-        
+
     """
     # Extracting the metrics
     win_rate = metrics.get('performance_wins', 0)
@@ -94,38 +96,24 @@ def flatten_dict(d, parent_key='', sep='_'):
     return dict(items)
 
 
-# def flatten_dict(d, parent_key='', sep='_'):
-#     items = []
-#     for k, v in d.items():
-#         new_key = f'{parent_key}{sep}{k}' if parent_key else k
-#         if isinstance(v, collections.abc.MutableMapping):
-#             items.extend(flatten_dict(v, new_key, sep=sep).items())
-#         else:
-#             items.append((new_key, v))
-#     return dict(items)
+def reorganize_and_aggregate_metrics(flattened_data):
+    seq_len_stats = {}
 
-
-# Function to reorganize the flattened data by word length
-
-def reorganize_by_word_length(flattened_data):
-    word_length_stats = {}
+    # Regular expression to match sequence length-related miss penalty stats
+    seq_len_pattern = re.compile(r'seq_length_(\d+)_miss_penalty')
 
     for key, value in flattened_data.items():
-        parts = key.split('_')
-        word_length = next((int(part)
-                           for part in parts if part.isdigit()), None)
+        seq_len_match = seq_len_pattern.match(key)
 
-        if word_length is not None:
-            # Determine the stat category by excluding the word length and initial identifier
-            stat_category = '_'.join(part for part in parts if not part.isdigit(
-            ) and part != 'length' and part != 'wise' and part != 'performence' and part != 'stats')
+        if seq_len_match:
+            # Extract and convert sequence length to integer
+            seq_length = int(seq_len_match.group(1))
 
-            if word_length not in word_length_stats:
-                word_length_stats[word_length] = {}
+            # Aggregate miss penalty statistics based on sequence length
+            # Assign miss penalty value directly
+            seq_len_stats[seq_length] = value
 
-            word_length_stats[word_length][stat_category] = value
-
-    return word_length_stats
+    return seq_len_stats
 
 
 def flatten_for_logging(aggregated_metrics):
@@ -280,34 +268,3 @@ def plot_hangman_stats(data):
     plt.tight_layout()
     plt.show()
 
-
-def split_hangman_dataset(dataset, train_ratio=0.8):
-    # Initialize dictionaries to hold train and validation indices for each class
-    train_indices = defaultdict(list)
-    valid_indices = defaultdict(list)
-
-    # Iterate through each class and split its indices
-    for class_key, indices in dataset.pair_index.items():
-        total_samples = len(indices)
-        shuffled_indices = random.sample(indices, total_samples)
-        split_idx = int(total_samples * train_ratio)
-
-        # Split indices into training and validation sets
-        train_indices[class_key] = shuffled_indices[:split_idx]
-        valid_indices[class_key] = shuffled_indices[split_idx:]
-
-    # Create new dataset instances for training and validation
-    train_dataset = HangmanDataset(dataset.parquet_files)
-    valid_dataset = HangmanDataset(dataset.parquet_files)
-
-    # Assign the split indices to the new datasets
-    train_dataset.pair_index = train_indices
-    valid_dataset.pair_index = valid_indices
-
-    # Update total_length attribute for both datasets
-    train_dataset.total_length = sum(len(indices)
-                                     for indices in train_indices.values())
-    valid_dataset.total_length = sum(len(indices)
-                                     for indices in valid_indices.values())
-
-    return train_dataset, valid_dataset
