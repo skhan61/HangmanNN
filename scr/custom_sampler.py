@@ -53,7 +53,7 @@ class PerformanceBasedSampler(Sampler):
         probabilities = np.full(self.total_samples, fill_value=1e-5)
         for idx, penalty in self.performance_metrics.items():
             if penalty >= self.score_threshold:
-                probabilities[idx - 1] = penalty  # Assuming idx starts from 1
+                probabilities[idx - 1] = 0.95  # Assuming idx starts from 1
             else:
                 probabilities[idx - 1] = 1e-5
         probabilities /= probabilities.sum()
@@ -67,7 +67,7 @@ class PerformanceBasedSampler(Sampler):
         self.performance_metrics = new_performance_metrics
         self.probabilities = self._calculate_sampling_probabilities()
 
-        self.dataset.rebuild_seq_len_index() ## TODO: do we need it current implementation?
+        # self.dataset.rebuild_seq_len_index() ## TODO: do we need it current implementation?
 
 # ==========================================
 # # dont change below

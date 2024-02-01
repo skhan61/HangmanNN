@@ -42,48 +42,124 @@ def determine_current_state(masked_word, guessed_chars):
         return "nearEnd"
 
 
-def calculate_difficulty_score(metrics, weight_win_rate=1.0,
-                               weight_miss_penalty=0.5):
-    """
+# def calculate_difficulty_score(metrics, weight_win_rate=1.0,
+#                                weight_miss_penalty=0.5):
+#     """
 
-    Calculates the difficulty score based on win rate and miss penalty.
+#     Calculates the difficulty score based on win rate and miss penalty.
 
-    :param metrics: Dictionary containing 'performance_wins' and 'miss_penalty_avg'.
-    :param weight_win_rate: Weight for the win rate metric.
-    :param weight_miss_penalty: Weight for the miss penalty metric.
-    :return: Calculated difficulty score.
+#     :param metrics: Dictionary containing 'performance_wins' and 'miss_penalty_avg'.
+#     :param weight_win_rate: Weight for the win rate metric.
+#     :param weight_miss_penalty: Weight for the miss penalty metric.
+#     :return: Calculated difficulty score.
 
-    Best Case Scenario (Lowest Difficulty for Players):
-    - Win Rate: 100% - The word is guessed correctly almost every time, 
-        indicating it is easy for players.
-    - Miss Penalty: 0 - There are rarely any incorrect guesses for this word.
-    - Difficulty Score: 0 - This score suggests that the word is the least 
-        challenging for players.
+#     Best Case Scenario (Lowest Difficulty for Players):
+#     - Win Rate: 100% - The word is guessed correctly almost every time,
+#         indicating it is easy for players.
+#     - Miss Penalty: 0 - There are rarely any incorrect guesses for this word.
+#     - Difficulty Score: 0 - This score suggests that the word is the least
+#         challenging for players.
 
-    Worst Case Scenario (Highest Difficulty for Players):
-    - Win Rate: 0% - The word is almost never guessed correctly, 
-        indicating it is very difficult for players.
-    - Miss Penalty: 1 - There is a high frequency of 
-        incorrect guesses for this word.
-    - Difficulty Score: 1.5 - This score suggests 
-        that the word is highly challenging for players.
+#     Worst Case Scenario (Highest Difficulty for Players):
+#     - Win Rate: 0% - The word is almost never guessed correctly,
+#         indicating it is very difficult for players.
+#     - Miss Penalty: 1 - There is a high frequency of
+#         incorrect guesses for this word.
+#     - Difficulty Score: 1.5 - This score suggests
+#         that the word is highly challenging for players.
 
-    """
-    # Extracting the metrics
-    win_rate = metrics.get('performance_wins', 0)
-    miss_penalty = metrics.get('miss_penalty_avg', 0)
+#     """
+#     # Extracting the metrics
+#     win_rate = metrics.get('performance_wins', 0)
+#     miss_penalty = metrics.get('miss_penalty_avg', 0)
 
-    # Normalize the metrics (invert win rate as lower win rate indicates higher difficulty)
+#     # Normalize the metrics (invert win rate as lower win rate indicates higher difficulty)
+#     normalized_win_rate = (100 - win_rate) / 100
+#     normalized_miss_penalty = miss_penalty  # Already in range 0 to 1
+
+#     # Calculate the composite score
+#     composite_score = (
+#         weight_win_rate * normalized_win_rate +
+#         weight_miss_penalty * normalized_miss_penalty
+#     )
+
+#     return composite_score
+
+
+# def extract_metrics(metrics_str):
+#     # Regular expressions to match win rates and miss penalties by sequence length
+#     win_rate_pattern = r"seq_length_win_rate_seq_len_(\d+)\s+([\d.]+)"
+#     miss_penalty_pattern = r"seq_length_miss_penalty_seq_len_(\d+)\s+([\d.]+)"
+
+#     # Extract win rates and miss penalties
+#     win_rates = {int(match[0]): float(match[1])
+#                  for match in re.findall(win_rate_pattern, metrics_str)}
+#     miss_penalties = {int(match[0]): float(match[1])
+#                       for match in re.findall(miss_penalty_pattern, metrics_str)}
+
+#     return win_rates, miss_penalties
+
+
+def calculate_difficulty_score(win_rate, miss_penalty,
+                               weight_win_rate=1.0, weight_miss_penalty=0.5):
     normalized_win_rate = (100 - win_rate) / 100
-    normalized_miss_penalty = miss_penalty  # Already in range 0 to 1
-
-    # Calculate the composite score
-    composite_score = (
-        weight_win_rate * normalized_win_rate +
-        weight_miss_penalty * normalized_miss_penalty
-    )
-
+    # Assume it's already normalized between 0 and 1
+    normalized_miss_penalty = miss_penalty
+    composite_score = (weight_win_rate * normalized_win_rate) + \
+        (weight_miss_penalty * normalized_miss_penalty)
     return composite_score
+
+
+def calculate_composite_scores(metrics_dict):
+# """
+#         Calculates the difficulty score based on win rate and miss penalty.
+
+#     :param metrics: Dictionary containing 'performance_wins' and 'miss_penalty_avg'.
+#     :param weight_win_rate: Weight for the win rate metric.
+#     :param weight_miss_penalty: Weight for the miss penalty metric.
+#     :return: Calculated difficulty score.
+
+#     Best Case Scenario (Lowest Difficulty for Players):
+#     - Win Rate: 100% - The word is guessed correctly almost every time,
+#         indicating it is easy for players.
+#     - Miss Penalty: 0 - There are rarely any incorrect guesses for this word.
+#     - Difficulty Score: 0 - This score suggests that the word is the least
+#         challenging for players.
+
+#     Worst Case Scenario (Highest Difficulty for Players):
+#     - Win Rate: 0% - The word is almost never guessed correctly,
+#         indicating it is very difficult for players.
+#     - Miss Penalty: 1 - There is a high frequency of
+#         incorrect guesses for this word.
+#     - Difficulty Score: 1.5 - This score suggests
+#         that the word is highly challenging for players.
+
+#     """
+    composite_scores = {}
+
+    for key, value in metrics_dict.items():
+        # Check if the key represents a win rate or miss penalty for a specific sequence length
+        if key.startswith('seq_length_win_rate_seq_len_'):
+            seq_len = int(key.split('_')[-1])
+            win_rate = value
+            # Default miss penalty to 0 if not found in the dictionary
+            miss_penalty_key = f'seq_length_miss_penalty_seq_len_{seq_len}'
+            miss_penalty = metrics_dict.get(miss_penalty_key, 0)
+        elif key.startswith('seq_length_miss_penalty_seq_len_'):
+            seq_len = int(key.split('_')[-1])
+            miss_penalty = value
+            # Default win rate to 0 if not found in the dictionary
+            win_rate_key = f'seq_length_win_rate_seq_len_{seq_len}'
+            win_rate = metrics_dict.get(win_rate_key, 0)
+        else:
+            # Skip keys that do not represent sequence length-specific metrics
+            continue
+
+        # Calculate composite score for the sequence length
+        composite_score = calculate_difficulty_score(win_rate, miss_penalty)
+        composite_scores[seq_len] = composite_score
+
+    return composite_scores
 
 
 # Function to flatten a nested dictionary

@@ -245,12 +245,15 @@ class HangmanModel(pl.LightningModule):
         base_dir = "/home/sayem/Desktop/Hangman"
         plot_and_save_win_rates(seq_len_win_rates, base_dir, epoch)
 
-    # Additional steps...
+        # Additional steps...
 
-        # # # Update the data module's sampler with new performance metrics, if applicable
-        # if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
-        #     self.trainer.datamodule.update_performance_metrics(
-        #         seq_len_stats)
+        composite_scores = calculate_composite_scores(performance_stats)
+        # print(composite_scores)
+
+        # # Update the data module's sampler with new performance metrics, if applicable
+        if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
+            self.trainer.datamodule.update_performance_metrics(
+                composite_scores)
 
         return performance_stats
 
