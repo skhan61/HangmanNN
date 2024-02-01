@@ -1,0 +1,14 @@
+{
+    "python.defaultInterpreterPath": "/home/sayem/anaconda3/envs/optiver/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "editor.rulers": [79, 100],
+    "editor.tabSize": 4,
+    "git.autofetch": true
+}

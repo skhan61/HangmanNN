@@ -84,7 +84,7 @@ class HangmanDataset(Dataset):
             'difficulty': row['difficulty'],
             'outcome': row['outcome'],
             'word_length': row['word_length'],
-            'won': row['won'] == 'True'
+            'won': row['won'] # == 'True'
         }
 
     def split(self, test_size=0.2):

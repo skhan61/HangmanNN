@@ -72,7 +72,8 @@ class HangmanModel(pl.LightningModule):
         # Calculate steps per epoch
         dataset_size = len(self.trainer.datamodule.train_dataloader().dataset)
         batch_size = self.trainer.datamodule.train_dataloader().batch_size
-        steps_per_epoch = max(dataset_size // batch_size, 1)  # Avoid division by zero
+        steps_per_epoch = max(dataset_size // batch_size,
+                              1)  # Avoid division by zero
 
         # Calculate total steps
         total_steps = self.trainer.max_epochs * steps_per_epoch
@@ -199,21 +200,19 @@ class HangmanModel(pl.LightningModule):
         eval_metrics = self.evaluate_and_log()
         self.last_eval_metrics = eval_metrics
 
+        # Initialize an empty dictionary to hold all performance stats
+        performance_stats = {}
+
         # Log existing metrics
         self.log('win_rate', eval_metrics.get('win_rate', 0),
                  on_step=False, on_epoch=True, prog_bar=True)
         self.log('avg_attempts', eval_metrics.get('attempts', 0),
                  on_step=False, on_epoch=True, prog_bar=True)
 
-        # Prepare for aggregating word length-wise stats
-        length_wise_stats = eval_metrics.get('length_wise_stats', {})
-        for length, penalties in self.granular_miss_penalty_stats.items():
-            if penalties:
-                avg_penalty = sum(penalties) / len(penalties)
-                length_wise_stats[f'miss_penalty_{length}'] = avg_penalty
-                # # Log the average penalty for each word length
-                # self.log(f'validation_miss_penalty_avg_{length}', avg_penalty,
-                #          on_step=False, on_epoch=True, prog_bar=False)
+        # Extract sequence length-wise win rates from simplified summaries
+        simplified_summaries = eval_metrics['simplified_summaries']
+        seq_len_win_rates = calculate_mean_win_rate_by_seq_length(
+            simplified_summaries)
 
         # Prepare for aggregating sequence length-wise stats
         seq_length_wise_stats = {}
@@ -221,48 +220,37 @@ class HangmanModel(pl.LightningModule):
             if penalties:
                 avg_penalty = sum(penalties) / len(penalties)
                 seq_length_wise_stats[f'miss_penalty_seq_len_{seq_length}'] = avg_penalty
-                # Log the average penalty for each sequence length
-                # self.log(f'validation_miss_penalty_avg_seq_len_{seq_length}', avg_penalty,
-                #          on_step=False, on_epoch=True, prog_bar=False)
 
-        # Initialize an empty dictionary to hold all performance stats
-        performance_stats = {}
+        # Add sequence length-wise win rates to seq_length_wise_stats
+        for seq_len, win_rate in seq_len_win_rates.items():
+            seq_length_wise_stats[f'win_rate_seq_len_{seq_len}'] = win_rate
 
-        # Assume length_wise_stats and seq_length_wise_stats are already populated dictionaries
-        # with length-wise performance and sequence length-wise miss penalty stats respectively
+        # # Debug: Print the seq_length_wise_stats dictionary
+        # print("Seq Length Wise Stats:", seq_length_wise_stats)
 
-        for word_length, metrics in length_wise_stats.items():
-            # Check if metrics is a dictionary
-            if isinstance(metrics, dict):
+        # Process seq_length_wise_stats and add them to performance_stats
+        for seq_length, metrics in seq_length_wise_stats.items():
+            if isinstance(metrics, dict):  # Check if metrics is a dictionary
                 for metric_name, value in metrics.items():
-                    key = f"length_{word_length}_{metric_name}"
-                    performance_stats[key] = value
-            else:
-                # Handle the case where metrics is not a dictionary (e.g., a float)
-                # Assuming the float value represents total games
-                key = f"length_{word_length}"
-                performance_stats[key] = metrics
+                    performance_stats[f'seq_length_{seq_length}_{metric_name}'] = value
+            else:  # Handle the case where metrics is a float
+                # Assuming the float value represents a metric
+                performance_stats[f'seq_length_{seq_length}'] = metrics
 
-
-        # Process seq_length_wise_stats
-        for original_key, value in seq_length_wise_stats.items():
-            seq_length = original_key.split('_')[-1]
-            # Construct a new key for the performance_stats dictionary
-            new_key = f"seq_length_{seq_length}_miss_penalty"
-
-            # Assign the float value to the new key in the performance_stats dictionary
-            performance_stats[new_key] = value
-
+        # Log all performance stats
         for key, value in performance_stats.items():
             self.log(key, value, on_step=False, on_epoch=True, prog_bar=False)
 
-        seq_len_stats = reorganize_and_aggregate_metrics(
-            performance_stats)
+        epoch = self.trainer.current_epoch  # Get the current epoch from the Trainer
+        base_dir = "/home/sayem/Desktop/Hangman"
+        plot_and_save_win_rates(seq_len_win_rates, base_dir, epoch)
 
-        # # Update the data module's sampler with new performance metrics, if applicable
-        if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
-            self.trainer.datamodule.update_performance_metrics(
-                seq_len_stats)
+    # Additional steps...
+
+        # # # Update the data module's sampler with new performance metrics, if applicable
+        # if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
+        #     self.trainer.datamodule.update_performance_metrics(
+        #         seq_len_stats)
 
         return performance_stats
 
@@ -279,11 +267,19 @@ class HangmanModel(pl.LightningModule):
         win_rate = result['overall_win_rate']
         attempts = result['overall_avg_attempts']
         length_wise_stats = result['length_wise_stats']
-        self.train()
+        # Extract simplified summaries
+        simplified_summaries = result['simplified_summaries']
 
-        # Return the collected statistics
-        return {'win_rate': win_rate, 'attempts': attempts,
-                'length_wise_stats': length_wise_stats}
+        self.train()  # Ensure the model is set back to training mode
+
+        # Return the collected statistics, including simplified_summaries
+        return {
+            'win_rate': win_rate,
+            'attempts': attempts,
+            'length_wise_stats': length_wise_stats,
+            # Include simplified summaries in the returned dictionary
+            'simplified_summaries': simplified_summaries
+        }
 
     def forward(self, fets, original_seq_lens, missed_chars):
         encoded_fets = self.encoder(fets, original_seq_lens, missed_chars)

@@ -1,7 +1,9 @@
 import collections
+import os
 import pickle
 import random
 import re
+import shutil
 from collections import defaultdict
 from collections.abc import MutableMapping
 from datetime import datetime
@@ -268,3 +270,38 @@ def plot_hangman_stats(data):
     plt.tight_layout()
     plt.show()
 
+
+def plot_and_save_win_rates(mean_win_rates, base_dir, epoch, plot_name="win_rates_plot"):
+    # Format the plot name to include the epoch number
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    formatted_plot_name = f"{plot_name}_epoch_{epoch}_{timestamp}.png"
+
+    # Create a Path object for the plots directory within the base directory
+    plots_dir_path = Path(base_dir) / "plots"
+
+    # Create the plots directory if it does not exist
+    plots_dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Sort the mean win rates by sequence length
+    sorted_win_rates = dict(sorted(mean_win_rates.items()))
+
+    # Unpack the sorted dictionary into lists for plotting
+    sequence_lengths = list(sorted_win_rates.keys())
+    win_rates = list(sorted_win_rates.values())
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.bar(sequence_lengths, win_rates, color='skyblue')
+    plt.xlabel('Sequence Length')
+    plt.ylabel('Mean Win Rate (%)')
+    plt.title(f'Mean Win Rate by Sequence Length - Epoch {epoch}')
+    plt.xticks(sequence_lengths, rotation=45)
+    plt.grid(axis='y', linestyle='--')
+
+    # Save the plot to the specified directory within the 'plots' subdirectory
+    plot_path = plots_dir_path / formatted_plot_name
+    plt.savefig(plot_path)
+    print(f"Plot saved to {plot_path}")
+
+    # # Optionally, show the plot in the notebook or script output
+    # plt.show()

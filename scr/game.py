@@ -7,6 +7,7 @@ from itertools import combinations
 import torch
 import torch.nn as nn
 from IPython.display import clear_output, display
+from tqdm.auto import tqdm
 # from tqdm import tqdm
 from tqdm.notebook import tqdm
 
@@ -46,54 +47,75 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # mimic api
 
+def update_word_state(word, masked_word, guessed_char):
+    return "".join(char if char == guessed_char or masked_word[idx] != '_'
+                   else masked_word[idx] for idx, char in enumerate(word))
 
-def update_word_state(actual_word, current_state, guessed_char):
-    return ''.join([guessed_char if actual_word[i] == guessed_char else
-                    current_state[i] for i in range(len(actual_word))])
 
+# def update_word_state(actual_word, current_state, guessed_char):
+#     return ''.join([guessed_char if actual_word[i] == guessed_char else
+#                     current_state[i] for i in range(len(actual_word))])
 
 def play_game_with_a_word(model, word, char_frequency,
-                          max_word_length, max_attempts=6,
-                          normalize=True):
-
-    guessed_letters = []  # A list to keep track of guessed characters
+                          max_word_length, max_attempts=6, normalize=True):
+    guessed_letters = []  # Track guessed characters
     attempts_remaining = max_attempts
     masked_word = "_" * len(word)
-    # print(masked_word)
     game_status = "ongoing"
-
-    # print(f"Starting the game. Word to guess: {' '.join(masked_word)}")  # Display initial state
+    correct_guesses = 0
+    incorrect_guesses = 0
+    seq_len_stats = []  # Enhanced to track more detailed game-level statistics
 
     while game_status == "ongoing" and attempts_remaining > 0:
-
         guessed_char = guess(model, masked_word, char_frequency,
                              max_word_length, guessed_letters)
-
-        # # Add to the list of guessed letters
-        # guessed_letters.append(guessed_char)
-
-        # Add the new guess to the guessed letters list
         if guessed_char not in guessed_letters:
             guessed_letters.append(guessed_char)
 
+        previous_masked_word = masked_word
         masked_word = update_word_state(word, masked_word, guessed_char)
 
-        if guessed_char not in word:
+        correct_guess = guessed_char in word
+        if correct_guess:
+            correct_guesses += 1
+        else:
+            incorrect_guesses += 1
             attempts_remaining -= 1
 
-        # print(f"Guessed: {guessed_char}, Word: {' '.join(masked_word)}, \
-        # Attempts remaining: {attempts_remaining}")  # Display current state
+        seq_len_stats.append({
+            "masked_word": masked_word,
+            "guess": guessed_char,
+            "correct_guess": correct_guess,
+            "attempts_remaining": attempts_remaining,
+            "uncovered_letters": sum(1 for orig, new in zip(word, masked_word) if orig == new and new != '_'),
+            "correct_guesses_so_far": correct_guesses,
+            "incorrect_guesses_so_far": incorrect_guesses,
+            # Copy to avoid reference issues
+            "guessed_letters": list(guessed_letters)
+        })
 
         if "_" not in masked_word:
             game_status = "success"
 
-    # if game_status == "success":
-    #     # print(f"Congratulations! The word '{word}' was guessed correctly.")
-    # else:
-    #     # print(f"Game over. The correct word was '{word}'.")
+    # Existing detailed sequence length evolution summary
+    seq_len_evolution_summary = {
+        "total_guesses": len(seq_len_stats),
+        "seq_length_evolution": [stat['uncovered_letters'] for stat in seq_len_stats],
+        "final_uncovered_letters": seq_len_stats[-1]['uncovered_letters'] if seq_len_stats else 0,
+        "correct_guesses": correct_guesses,
+        "incorrect_guesses": incorrect_guesses
+    }
 
-    return masked_word == word, \
-        masked_word, max_attempts - attempts_remaining
+    # New simplified summary
+    simplified_summary = {
+        "total_guesses": len(seq_len_stats),
+        "final_uncovered_letters": seq_len_stats[-1]['uncovered_letters'] if seq_len_stats else 0,
+        "game_won": game_status == "success"
+    }
+
+    # Return the existing details along with the new simplified summary
+    return masked_word == word, masked_word, max_attempts - attempts_remaining, \
+        seq_len_stats, seq_len_evolution_summary, simplified_summary
 
 
 def play_games_and_calculate_stats(model, words_list, char_frequency,
@@ -102,35 +124,42 @@ def play_games_and_calculate_stats(model, words_list, char_frequency,
     total_wins = 0
     total_games = 0
     total_attempts_used = 0
-
-    # For length-wise details
     length_wise_stats = {}
+    seq_len_level_stats = {}  # Aggregate stats at sequence length level
+    # Collect summaries of sequence length evolution for each game
+    game_evolution_summaries = []
+    simplified_summaries = []  # Collect simplified summaries for each game
 
-    # # Initialize progress bar
-    # with tqdm(total=len(words_list), desc="Processing words", unit="word") as pbar:
-    # Initialize progress bar
-    # with tqdm(total=len(words_list)) as pbar:
     with tqdm(total=len(words_list), desc="Processing words", unit="word", leave=False) as pbar:
         for word in words_list:
-            word = word.lower()  # Ensure the word is in lowercase
+            word = word.lower()
             word_length = len(word)
-
-            # Initialize length-wise stats
             if word_length not in length_wise_stats:
                 length_wise_stats[word_length] = {
                     "total_games": 0, "wins": 0, "total_attempts_used": 0}
-
-            # Initialize stats for this word
             if word not in stats:
                 stats[word] = {"total_games": 0,
                                "wins": 0, "total_attempts_used": 0}
 
-                # Play game with the word
-                win, masked_word, attempts_used = play_game_with_a_word(
-                    model, word, char_frequency, max_word_length, max_attempts
-                )
+                # Adjusted to include simplified_summary in the unpacked values
+                win, masked_word, attempts_used, game_seq_len_stats, seq_len_evolution_summary, simplified_summary \
+                    = play_game_with_a_word(model, word, char_frequency, max_word_length, max_attempts)
 
-                # Update stats for this word and length-wise stats
+                game_evolution_summaries.append(seq_len_evolution_summary)
+                # Store each game's simplified summary
+                simplified_summaries.append(simplified_summary)
+
+                for step_stat in game_seq_len_stats:
+                    seq_len = step_stat['uncovered_letters']
+                    if seq_len not in seq_len_level_stats:
+                        seq_len_level_stats[seq_len] = {
+                            "total_attempts": 0, "correct_guesses": 0, "games": 0}
+                    seq_len_level_stats[seq_len]["total_attempts"] += 1
+                    # Count games that reached this sequence length
+                    seq_len_level_stats[seq_len]["games"] += 1
+                    if step_stat['correct_guess']:
+                        seq_len_level_stats[seq_len]["correct_guesses"] += 1
+
                 stats[word]["total_games"] += 1
                 stats[word]["total_attempts_used"] += attempts_used
                 length_wise_stats[word_length]["total_games"] += 1
@@ -141,25 +170,22 @@ def play_games_and_calculate_stats(model, words_list, char_frequency,
                     length_wise_stats[word_length]["wins"] += 1
                     total_wins += 1
 
-                # # Update progress bar
-                # pbar.update(1)
-
             total_games += 1
             total_attempts_used += attempts_used
-
-            # # # Update progress bar
             pbar.update(1)
 
-    # pbar.close()
-    # clear_output(wait=True)
+    # Calculate win rates and average attempts for sequence lengths
+    for seq_len, data in seq_len_level_stats.items():
+        data["win_rate"] = (data["correct_guesses"] / data["total_attempts"]
+                            ) * 100 if data["total_attempts"] > 0 else 0
+        data["average_attempts"] = data["total_attempts"] / \
+            data["games"] if data["games"] > 0 else 0
 
-    # Calculate win rate and average attempts used for each word
     for word, data in stats.items():
         data["win_rate"] = (data["wins"] / data["total_games"]) * 100
         data["average_attempts_used"] = data["total_attempts_used"] / \
             data["total_games"]
 
-    # Calculate length-wise stats
     for length, data in length_wise_stats.items():
         data["win_rate"] = (data["wins"] / data["total_games"]) * 100
         data["average_attempts_used"] = data["total_attempts_used"] / \
@@ -172,8 +198,166 @@ def play_games_and_calculate_stats(model, words_list, char_frequency,
         "stats": stats,
         "overall_win_rate": overall_win_rate,
         "overall_avg_attempts": overall_avg_attempts,
-        "length_wise_stats": length_wise_stats
+        "length_wise_stats": length_wise_stats,
+        "seq_len_level_stats": seq_len_level_stats,
+        "game_evolution_summaries": game_evolution_summaries,
+        # Include simplified summaries in the return value
+        "simplified_summaries": simplified_summaries
     }
+
+
+def calculate_mean_win_rate_by_seq_length(simplified_summaries):
+    # Dictionary to hold the total number of wins and games for each unique total_guesses value
+    guess_stats = {}
+
+    # Iterate through each game summary
+    for summary in simplified_summaries:
+        total_guesses = summary['total_guesses']
+        game_won = summary['game_won']
+
+        # Initialize the dictionary entry if it doesn't exist
+        if total_guesses not in guess_stats:
+            guess_stats[total_guesses] = {'wins': 0, 'games': 0}
+
+        # Increment the win count if the game was won
+        if game_won:
+            guess_stats[total_guesses]['wins'] += 1
+
+        # Increment the total game count
+        guess_stats[total_guesses]['games'] += 1
+
+    # Calculate the mean win rate for each unique total_guesses value
+    mean_win_rates = {}
+    for guesses, stats in guess_stats.items():
+        win_rate = (stats['wins'] / stats['games']) * \
+            100  # Win rate as a percentage
+        mean_win_rates[guesses] = win_rate
+
+    return mean_win_rates
+
+
+# def play_game_with_a_word(model, word, char_frequency,
+#                           max_word_length, max_attempts=6,
+#                           normalize=True):
+
+#     guessed_letters = []  # A list to keep track of guessed characters
+#     attempts_remaining = max_attempts
+#     masked_word = "_" * len(word)
+#     # print(masked_word)
+#     game_status = "ongoing"
+
+#     # print(f"Starting the game. Word to guess: {' '.join(masked_word)}")  # Display initial state
+
+#     while game_status == "ongoing" and attempts_remaining > 0:
+
+#         guessed_char = guess(model, masked_word, char_frequency,
+#                              max_word_length, guessed_letters)
+
+#         # # Add to the list of guessed letters
+#         # guessed_letters.append(guessed_char)
+
+#         # Add the new guess to the guessed letters list
+#         if guessed_char not in guessed_letters:
+#             guessed_letters.append(guessed_char)
+
+#         masked_word = update_word_state(word, masked_word, guessed_char)
+
+#         if guessed_char not in word:
+#             attempts_remaining -= 1
+
+#         # print(f"Guessed: {guessed_char}, Word: {' '.join(masked_word)}, \
+#         # Attempts remaining: {attempts_remaining}")  # Display current state
+
+#         if "_" not in masked_word:
+#             game_status = "success"
+
+#     # if game_status == "success":
+#     #     # print(f"Congratulations! The word '{word}' was guessed correctly.")
+#     # else:
+#     #     # print(f"Game over. The correct word was '{word}'.")
+
+#     return masked_word == word, \
+#         masked_word, max_attempts - attempts_remaining
+
+
+# def play_games_and_calculate_stats(model, words_list, char_frequency,
+#                                    max_word_length, max_attempts=6):
+#     stats = {}
+#     total_wins = 0
+#     total_games = 0
+#     total_attempts_used = 0
+
+#     # For length-wise details
+#     length_wise_stats = {}
+
+#     # # Initialize progress bar
+#     # with tqdm(total=len(words_list), desc="Processing words", unit="word") as pbar:
+#     # Initialize progress bar
+#     # with tqdm(total=len(words_list)) as pbar:
+#     with tqdm(total=len(words_list), desc="Processing words", unit="word", leave=False) as pbar:
+#         for word in words_list:
+#             word = word.lower()  # Ensure the word is in lowercase
+#             word_length = len(word)
+
+#             # Initialize length-wise stats
+#             if word_length not in length_wise_stats:
+#                 length_wise_stats[word_length] = {
+#                     "total_games": 0, "wins": 0, "total_attempts_used": 0}
+
+#             # Initialize stats for this word
+#             if word not in stats:
+#                 stats[word] = {"total_games": 0,
+#                                "wins": 0, "total_attempts_used": 0}
+
+#                 # Play game with the word
+#                 win, masked_word, attempts_used = play_game_with_a_word(
+#                     model, word, char_frequency, max_word_length, max_attempts
+#                 )
+
+#                 # Update stats for this word and length-wise stats
+#                 stats[word]["total_games"] += 1
+#                 stats[word]["total_attempts_used"] += attempts_used
+#                 length_wise_stats[word_length]["total_games"] += 1
+#                 length_wise_stats[word_length]["total_attempts_used"] += attempts_used
+
+#                 if win:
+#                     stats[word]["wins"] += 1
+#                     length_wise_stats[word_length]["wins"] += 1
+#                     total_wins += 1
+
+#                 # # Update progress bar
+#                 # pbar.update(1)
+
+#             total_games += 1
+#             total_attempts_used += attempts_used
+
+#             # # # Update progress bar
+#             pbar.update(1)
+
+#     # pbar.close()
+#     # clear_output(wait=True)
+
+#     # Calculate win rate and average attempts used for each word
+#     for word, data in stats.items():
+#         data["win_rate"] = (data["wins"] / data["total_games"]) * 100
+#         data["average_attempts_used"] = data["total_attempts_used"] / \
+#             data["total_games"]
+
+#     # Calculate length-wise stats
+#     for length, data in length_wise_stats.items():
+#         data["win_rate"] = (data["wins"] / data["total_games"]) * 100
+#         data["average_attempts_used"] = data["total_attempts_used"] / \
+#             data["total_games"]
+
+#     overall_win_rate = (total_wins / total_games) * 100
+#     overall_avg_attempts = total_attempts_used / total_games
+
+#     return {
+#         "stats": stats,
+#         "overall_win_rate": overall_win_rate,
+#         "overall_avg_attempts": overall_avg_attempts,
+#         "length_wise_stats": length_wise_stats
+#     }
 
 
 #### Dont change above this ######
@@ -271,7 +455,7 @@ def simulate_game_progress(model, word, initial_state, char_frequency,
                             if random.random() < correct_guess_chance
                             else random.choice(list(possible_incorrect_guesses))
                             if possible_incorrect_guesses else None)
-                            
+
         elif outcome_preference == "lose" and possible_incorrect_guesses:
             guessed_char = (random.choice(list(possible_incorrect_guesses))
                             if random.random() > correct_guess_chance
@@ -312,6 +496,6 @@ def simulate_game_progress(model, word, initial_state, char_frequency,
     return masked_word == word, game_progress
 
 
-def update_word_state(word, masked_word, guessed_char):
-    return "".join(char if char == guessed_char or masked_word[idx] != '_'
-                   else masked_word[idx] for idx, char in enumerate(word))
+# def update_word_state(word, masked_word, guessed_char):
+#     return "".join(char if char == guessed_char or masked_word[idx] != '_'
+#                    else masked_word[idx] for idx, char in enumerate(word))

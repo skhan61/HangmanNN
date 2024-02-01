@@ -23,6 +23,94 @@ def get_random_character():
     return random_char
 
 
+def guess_character(model, masked_word, char_frequency,
+                    max_word_length, guessed_chars, max_seq_length=1,
+                    fallback_strategy=True, device=None):
+
+    # print(f"Guessed characters: {guessed_chars}")
+
+    # Process the masked word to generate features
+    # The returned tensors should have an added batch dimension
+    fets, missed_chars = process_game_sequence(
+        [masked_word], [guessed_chars],
+        char_frequency, max_word_length, max_seq_length)
+
+    # Ensure batch dimension is added
+    # Add batch dimension, shape becomes [1, seq_len, feature_size]
+    fets = fets.unsqueeze(0)
+    missed_chars = missed_chars.unsqueeze(0)  # Add batch dimension
+
+    # Prepare sequence length for the model
+    seq_lens = torch.tensor([fets.size(1)], dtype=torch.long)
+
+    # Set model to evaluation mode
+    model.eval()
+
+    # Move tensors to the same device as the model
+    device = device or next(model.parameters()).device
+    fets = fets.to(device)
+    missed_chars = missed_chars.to(device)
+
+    # Model prediction
+    with torch.no_grad():
+        output = model(fets, seq_lens, missed_chars)
+
+    # Extract probabilities for the last character position
+    last_char_position = seq_lens.item() - 1
+    probabilities = torch.sigmoid(output[0, last_char_position, :])
+
+    # Exclude already guessed characters
+    guessed_indices = [char_to_idx[char]
+                       for char in guessed_chars if char in char_to_idx]
+    probabilities[torch.tensor(
+        guessed_indices, dtype=torch.long, device=device)] = 0
+
+    # Get the best character index
+    best_char_index = torch.argmax(probabilities).item()
+    guessed_char = idx_to_char[best_char_index]
+
+    # Fallback strategy
+    # if fallback_strategy and (guessed_char in guessed_chars
+    #                           or guessed_char == '_'):
+    if fallback_strategy and (guessed_char in guessed_chars
+                              or guessed_char == '_' or guessed_char == ''):
+        for char, _ in sorted(char_frequency.items(),
+                              key=lambda x: x[1], reverse=True):
+            if char not in guessed_chars:
+                guessed_char = char
+                break
+
+    return guessed_char
+
+
+def guess(model, word, char_frequency,
+          max_word_length, guessed_letters):
+
+    # word == state here
+
+    cleaned_word = "".join(char.lower()
+                           for char in word if char.isalpha() or char == '_')
+    # print(f"State {cleaned_word}")
+
+    # Predict the next character using the updated guess_character function
+    guessed_char = guess_character(
+        model, cleaned_word,
+        char_frequency,
+        max_word_length,
+        guessed_letters  # Pass the list of guessed letters
+    )
+
+    # guessed_char =  get_random_character()
+
+    # Add the new guess to the guessed letters list
+    if guessed_char not in guessed_letters:
+        guessed_letters.append(guessed_char)
+
+    # print(f"Print gussed letters: {guessed_letters}")
+
+    return guessed_char
+
+
 # # # # def gues(self, word):
 # def guess_character(model, masked_word, char_frequency,
 #                     max_word_length, guessed_chars,
@@ -142,91 +230,3 @@ def get_random_character():
 #                 break
 
 #     return guessed_char
-
-
-def guess_character(model, masked_word, char_frequency,
-                    max_word_length, guessed_chars, max_seq_length=1,
-                    fallback_strategy=True, device=None):
-
-    # print(f"Guessed characters: {guessed_chars}")
-
-    # Process the masked word to generate features
-    # The returned tensors should have an added batch dimension
-    fets, missed_chars = process_game_sequence(
-        [masked_word], [guessed_chars],
-        char_frequency, max_word_length, max_seq_length)
-
-    # Ensure batch dimension is added
-    # Add batch dimension, shape becomes [1, seq_len, feature_size]
-    fets = fets.unsqueeze(0)
-    missed_chars = missed_chars.unsqueeze(0)  # Add batch dimension
-
-    # Prepare sequence length for the model
-    seq_lens = torch.tensor([fets.size(1)], dtype=torch.long)
-
-    # Set model to evaluation mode
-    model.eval()
-
-    # Move tensors to the same device as the model
-    device = device or next(model.parameters()).device
-    fets = fets.to(device)
-    missed_chars = missed_chars.to(device)
-
-    # Model prediction
-    with torch.no_grad():
-        output = model(fets, seq_lens, missed_chars)
-
-    # Extract probabilities for the last character position
-    last_char_position = seq_lens.item() - 1
-    probabilities = torch.sigmoid(output[0, last_char_position, :])
-
-    # Exclude already guessed characters
-    guessed_indices = [char_to_idx[char]
-                       for char in guessed_chars if char in char_to_idx]
-    probabilities[torch.tensor(
-        guessed_indices, dtype=torch.long, device=device)] = 0
-
-    # Get the best character index
-    best_char_index = torch.argmax(probabilities).item()
-    guessed_char = idx_to_char[best_char_index]
-
-    # Fallback strategy
-    # if fallback_strategy and (guessed_char in guessed_chars
-    #                           or guessed_char == '_'):
-    if fallback_strategy and (guessed_char in guessed_chars
-                              or guessed_char == '_' or guessed_char == ''):
-        for char, _ in sorted(char_frequency.items(),
-                              key=lambda x: x[1], reverse=True):
-            if char not in guessed_chars:
-                guessed_char = char
-                break
-
-    return guessed_char
-
-
-def guess(model, word, char_frequency,
-          max_word_length, guessed_letters):
-
-    # word == state here
-
-    cleaned_word = "".join(char.lower()
-                           for char in word if char.isalpha() or char == '_')
-    # print(f"State {cleaned_word}")
-
-    # Predict the next character using the updated guess_character function
-    guessed_char = guess_character(
-        model, cleaned_word,
-        char_frequency,
-        max_word_length,
-        guessed_letters  # Pass the list of guessed letters
-    )
-
-    # guessed_char =  get_random_character()
-
-    # Add the new guess to the guessed letters list
-    if guessed_char not in guessed_letters:
-        guessed_letters.append(guessed_char)
-
-    # print(f"Print gussed letters: {guessed_letters}")
-
-    return guessed_char
