@@ -71,7 +71,7 @@ class HangmanModel(pl.LightningModule):
 
         # Calculate steps per epoch
         dataset_size = len(self.trainer.datamodule.train_dataloader().dataset)
-        batch_size = self.trainer.datamodule.train_dataloader().batch_size
+        batch_size = self.trainer.datamodule.batch_size
         steps_per_epoch = max(dataset_size // batch_size,
                               1)  # Avoid division by zero
 

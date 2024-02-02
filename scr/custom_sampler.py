@@ -15,7 +15,7 @@ from scr.utils import *
 
 
 class PerformanceBasedSampler(Sampler):
-    def __init__(self, dataset, performance_metrics, batch_size, score_threshold=0.0001):
+    def __init__(self, dataset, performance_metrics, batch_size, score_threshold=0.75):
         self.dataset = dataset
         self.performance_metrics = performance_metrics
         self.batch_size = batch_size
@@ -50,14 +50,51 @@ class PerformanceBasedSampler(Sampler):
             start_idx = end_idx
 
     def _calculate_sampling_probabilities(self):
+        # Initialize all probabilities with a very small value
         probabilities = np.full(self.total_samples, fill_value=1e-5)
-        for idx, penalty in self.performance_metrics.items():
-            if penalty >= self.score_threshold:
-                probabilities[idx - 1] = 0.95  # Assuming idx starts from 1
+
+        # Iterate through the dataset to determine the sequence length for each sample
+        for idx in range(self.total_samples):
+            # If the dataset takes an integer index, use it directly
+            if isinstance(self.dataset[idx], tuple):
+                # Assuming the first element of the tuple represents the sequence or has a way to determine its length
+                sample = self.dataset[idx]
+                seq_length = len(sample['guessed_states'])
             else:
-                probabilities[idx - 1] = 1e-5
+                # Directly using the dataset index if it's not a tuple
+                # print(self.dataset[idx])
+                sample = self.dataset[idx]
+                seq_length = len(sample['guessed_states'])
+                # print(seq_length)
+            # Use the sequence length to set the probability based on performance metrics
+            if seq_length in self.performance_metrics:
+                penalty = self.performance_metrics[seq_length]
+                if penalty >= self.score_threshold:
+                    # Set high probability for this index
+                    probabilities[idx] = 0.95
+                    # print(f"high prob trig")
+                else:
+                    probabilities[idx] = 1e-5  # Maintain low probability
+
+        # # Normalize probabilities
         probabilities /= probabilities.sum()
+
         return probabilities
+
+    # def _calculate_sampling_probabilities(self):
+    #     probabilities = np.full(self.total_samples, fill_value=1e-5)
+    #     print(self.performance_metrics.items())
+    #     for idx, penalty in self.performance_metrics.items():
+    #         print(idx)
+    #         if penalty >= self.score_threshold:
+    #             probabilities[idx - 1] = 0.95  # Assuming idx starts from 1
+    #             print(probabilities)
+    #         else:
+    #             probabilities[idx - 1] = 1e-5
+    #     probabilities /= probabilities.sum()
+
+    #     print(len(probabilities))
+    #     return probabilities
 
     def __len__(self):
         # Reflects the actual number of batches, including a possibly incomplete last batch
