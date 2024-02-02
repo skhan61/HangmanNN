@@ -4,7 +4,7 @@
 cd "/home/sayem/Desktop/Hangman"
 
 # Explicitly add the 'Old' folder recursively
-find versions -type f \( -name "*.py" -o -name "*.ipynb" \) -exec git add -f {} \;
+find old -type f \( -name "*.py" -o -name "*.ipynb" \) -exec git add -f {} \;
 find scr -type f \( -name "*.py" -o -name "*.ipynb" \) -exec git add -f {} \;
 # find report -type f -name "*.html" -exec git add -f {} \;
 
