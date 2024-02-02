@@ -109,7 +109,9 @@ def encode_guessed_letters(guessed_letters, char_to_idx):
 # =============================================================
 
 
-def analyze_and_extract_features(game_states, guesses, maximum_word_length=None):
+def analyze_and_extract_features(game_states,
+                                 guesses,
+                                 maximum_word_length=None):
     total_attempts = 0
     total_correct_guesses = 0
     guess_outcomes = []  # Tracks the success (1) or failure (0) of each guess
@@ -132,6 +134,8 @@ def analyze_and_extract_features(game_states, guesses, maximum_word_length=None)
             break
 
         cumulative_guessed_letters.append(guess)
+
+        
         prev_state = game_states[i]
         current_state = game_states[i + 1] if i + \
             1 < len(game_states) else game_states[-1]
